@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Car Collector
 
-## Getting Started
+Private Next.js panel for collecting Arval car offers, storing price snapshots in MongoDB, and reviewing price history.
 
-First, run the development server:
+## Local setup
 
 ```bash
+npm install
+cp .env.example .env.local
+npm run db:local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Set `MONGODB_URI` to MongoDB Atlas for hosted data, or leave it unset locally to use `mongodb://127.0.0.1:27017/carCollectorDB`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## API
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+- `GET /api/cars` returns car offers with price history. Supported filters: `id`, `brand`, `model`, `changedOnly`.
+- `GET /api/cars/filters` returns available brands and models for autocomplete filters.
+- `GET` or `POST /api/collector/run` fetches Arval offers and stores price snapshots. It requires `x-cron-secret` or `Authorization: Bearer <CRON_SECRET>`.
 
-## Learn More
+## Migration
 
-To learn more about Next.js, take a look at the following resources:
+Import old local data into the hosted database from the JSON backup:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+$env:MONGODB_URI="mongodb+srv://user:password@cluster.mongodb.net/carCollectorDB"
+$env:LEGACY_CARS_JSON="backup/carCollectorDB.cars.json"
+npm run migrate:legacy
+npm run images:backfill
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+The script reads legacy `cars` documents, upserts `CarOffer` records, and writes deduplicated `PriceSnapshot` entries.
 
-## Deploy on Vercel
+## Deploy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Deploy the Next.js app to Vercel and configure:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+- `MONGODB_URI`
+- `CRON_SECRET`
+- optional `ARVAL_API_BASE_URL`
+- optional `ARVAL_ANNOUNCEMENTS_PATH`
+
+`vercel.json` schedules the collector once per day at `08:00 UTC`.
+
+Vercel Cron invokes `GET /api/collector/run` and sends `Authorization: Bearer <CRON_SECRET>` automatically when `CRON_SECRET` is configured in the Vercel project environment variables.
+
+For MongoDB Atlas:
+
+- create a cluster and database user,
+- set Network Access to allow Vercel connections; for the initial Vercel serverless setup use `0.0.0.0/0` with a strong database password,
+- set `MONGODB_URI` in Vercel to the Atlas connection string.
