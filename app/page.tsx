@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Autocomplete from "@mui/material/Autocomplete";
+import LinearProgress from "@mui/material/LinearProgress";
 import TextField from "@mui/material/TextField";
 import { Line } from "react-chartjs-2";
 import {
@@ -51,6 +52,7 @@ export default function Home() {
     brands: [],
     models: [],
   });
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [pagination, setPagination] = useState<{
     page: number;
     pageSize: PageSizeValue;
@@ -76,6 +78,7 @@ export default function Home() {
     nextPageSize = pagination.pageSize,
   ) {
     setLoadState("loading");
+    setLoadingProgress(12);
     setCollectorMessage("");
 
     const params = new URLSearchParams();
@@ -104,6 +107,7 @@ export default function Home() {
         total: payload.total || 0,
         totalPages: payload.totalPages || 1,
       });
+      setLoadingProgress(100);
       setSelectedCarId((current) =>
         payload.cars?.some((car: CarOfferView) => car.id === current)
           ? current
@@ -115,6 +119,7 @@ export default function Home() {
       setCollectorMessage(
         error instanceof Error ? error.message : "Nie udało się pobrać danych.",
       );
+      setLoadingProgress(100);
       setLoadState("error");
     }
   }
@@ -215,6 +220,20 @@ export default function Home() {
   }, [previewImage]);
 
   useEffect(() => {
+    if (loadState !== "loading") {
+      return undefined;
+    }
+
+    const interval = window.setInterval(() => {
+      setLoadingProgress((current) =>
+        current >= 88 ? current : Math.min(88, current + 8),
+      );
+    }, 250);
+
+    return () => window.clearInterval(interval);
+  }, [loadState]);
+
+  useEffect(() => {
     function updateScrollTopVisibility() {
       const hasScrollableContent =
         document.documentElement.scrollHeight > window.innerHeight + 8;
@@ -225,7 +244,9 @@ export default function Home() {
 
     updateScrollTopVisibility();
     window.addEventListener("resize", updateScrollTopVisibility);
-    window.addEventListener("scroll", updateScrollTopVisibility, { passive: true });
+    window.addEventListener("scroll", updateScrollTopVisibility, {
+      passive: true,
+    });
 
     return () => {
       window.removeEventListener("resize", updateScrollTopVisibility);
@@ -364,10 +385,19 @@ export default function Home() {
             className={`rounded border px-4 py-3 text-sm ${
               collectorState === "error" || loadState === "error"
                 ? "border-red-500/40 bg-red-500/10 text-red-100"
-              : "border-cyan-400/40 bg-cyan-400/10 text-cyan-100"
+                : "border-cyan-400/40 bg-cyan-400/10 text-cyan-100"
             }`}
           >
             {collectorMessage}
+          </div>
+        )}
+        {loadState === "loading" && (
+          <div aria-label="Ładowanie danych">
+            <LinearProgress
+              variant="determinate"
+              value={loadingProgress}
+              sx={loadingProgressSx}
+            />
           </div>
         )}
 
@@ -377,9 +407,6 @@ export default function Home() {
               Auta ({pagination.total})
             </h2>
             <div className="flex flex-wrap items-center gap-2">
-              {loadState === "loading" && (
-                <span className="text-sm text-slate-400">Ładowanie...</span>
-              )}
               <label className="flex h-10 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200">
                 Na stronie
                 <select
@@ -456,92 +483,92 @@ export default function Home() {
                     key={car.id}
                   >
                     <div className="grid gap-4 md:grid-cols-[120px_1fr_auto]">
-                    <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded bg-slate-800">
-                      {car.imageUrl ? (
-                        <button
-                          aria-label={`Powiększ zdjęcie: ${car.fullName}`}
-                          className="h-full w-full cursor-zoom-in"
-                          onClick={() =>
-                            setPreviewImage({
-                              alt: car.fullName,
-                              src: car.imageUrl as string,
-                            })
-                          }
-                          type="button"
-                        >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            alt={car.fullName}
-                            className="h-full w-full object-cover transition duration-200 hover:scale-105"
-                            src={car.imageUrl}
-                          />
-                        </button>
-                      ) : (
-                        <div className="px-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          Brak zdjęcia
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="truncate text-base font-semibold text-white">
-                          {car.fullName}
-                        </h3>
-                        {car.hasPriceChanged && (
-                          <span className="rounded bg-amber-300 px-2 py-1 text-xs font-semibold text-slate-950">
-                            cena zmieniona
-                          </span>
+                      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded bg-slate-800">
+                        {car.imageUrl ? (
+                          <button
+                            aria-label={`Powiększ zdjęcie: ${car.fullName}`}
+                            className="h-full w-full cursor-zoom-in"
+                            onClick={() =>
+                              setPreviewImage({
+                                alt: car.fullName,
+                                src: car.imageUrl as string,
+                              })
+                            }
+                            type="button"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              alt={car.fullName}
+                              className="h-full w-full object-cover transition duration-200 hover:scale-105"
+                              src={car.imageUrl}
+                            />
+                          </button>
+                        ) : (
+                          <div className="px-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            Brak zdjęcia
+                          </div>
                         )}
                       </div>
-                      <p className="mt-1 text-sm text-slate-400">
-                        {car.brand} / {car.model} / ID {car.externalId}
-                      </p>
-                      <dl className="mt-3 grid gap-2 text-sm text-slate-300 sm:grid-cols-4">
-                        <div>
-                          <dt className="text-slate-500">Data ogłoszenia</dt>
-                          <dd>{formatDate(car.announcementCreatedAt)}</dd>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="truncate text-base font-semibold text-white">
+                            {car.fullName}
+                          </h3>
+                          {car.hasPriceChanged && (
+                            <span className="rounded bg-amber-300 px-2 py-1 text-xs font-semibold text-slate-950">
+                              cena zmieniona
+                            </span>
+                          )}
                         </div>
-                        <div>
-                          <dt className="text-slate-500">Cena netto</dt>
-                          <dd className="font-semibold text-white">
-                            {formatPrice(car.latestPrices[0])}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-slate-500">Przebieg</dt>
-                          <dd>{formatMileage(car.details.mileage)}</dd>
-                        </div>
-                        <div>
-                          <dt className="text-slate-500">Historia</dt>
-                          <dd>{car.priceHistory.length} punktów</dd>
-                        </div>
-                      </dl>
-                    </div>
-                    <div className="flex items-start gap-2 md:flex-col">
-                      {hasChart && (
-                        <button
-                          className="h-9 rounded bg-slate-100 px-3 text-sm font-semibold text-slate-950 transition hover:bg-white"
-                          onClick={() =>
-                            setSelectedCarId((current) =>
-                              current === car.id ? null : car.id,
-                            )
-                          }
-                          type="button"
-                        >
-                          {isSelected ? "Ukryj" : "Wykres"}
-                        </button>
-                      )}
-                      {car.offerUrl && (
-                        <a
-                          className="h-9 rounded border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-slate-500"
-                          href={car.offerUrl}
-                          rel="noopener noreferrer"
-                          target="_blank"
-                        >
-                          Oferta
-                        </a>
-                      )}
-                    </div>
+                        <p className="mt-1 text-sm text-slate-400">
+                          {car.brand} / {car.model} / ID {car.externalId}
+                        </p>
+                        <dl className="mt-3 grid gap-2 text-sm text-slate-300 sm:grid-cols-4">
+                          <div>
+                            <dt className="text-slate-500">Data ogłoszenia</dt>
+                            <dd>{formatDate(car.announcementCreatedAt)}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-slate-500">Cena netto</dt>
+                            <dd className="font-semibold text-white">
+                              {formatPrice(car.latestPrices[0])}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-slate-500">Przebieg</dt>
+                            <dd>{formatMileage(car.details.mileage)}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-slate-500">Historia</dt>
+                            <dd>{car.priceHistory.length} punktów</dd>
+                          </div>
+                        </dl>
+                      </div>
+                      <div className="flex items-start gap-2 md:flex-col">
+                        {hasChart && (
+                          <button
+                            className="h-9 rounded bg-slate-100 px-3 text-sm font-semibold text-slate-950 transition hover:bg-white"
+                            onClick={() =>
+                              setSelectedCarId((current) =>
+                                current === car.id ? null : car.id,
+                              )
+                            }
+                            type="button"
+                          >
+                            {isSelected ? "Ukryj" : "Wykres"}
+                          </button>
+                        )}
+                        {car.offerUrl && (
+                          <a
+                            className="h-9 rounded border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-slate-500"
+                            href={car.offerUrl}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                          >
+                            Oferta
+                          </a>
+                        )}
+                      </div>
                     </div>
 
                     {isSelected && hasChart && (
@@ -716,5 +743,15 @@ const autocompleteSlotProps = {
         backgroundColor: "#164e63",
       },
     },
+  },
+};
+
+const loadingProgressSx = {
+  height: 6,
+  borderRadius: 999,
+  backgroundColor: "#1e293b",
+  "& .MuiLinearProgress-bar": {
+    borderRadius: 999,
+    backgroundColor: "#22d3ee",
   },
 };
