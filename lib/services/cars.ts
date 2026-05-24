@@ -25,6 +25,7 @@ export interface CarSearchResult {
   page: number;
   pageSize: number | "all";
   totalPages: number;
+  listUpdatedAt?: string;
 }
 
 export async function getCarFilterOptions(brand?: string): Promise<CarFilterOptions> {
@@ -68,6 +69,14 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
 
   const offers = await CarOffer.find(query).lean();
   const histories = await getHistories(offers.map((offer) => offer._id));
+  const latestListUpdate = offers.reduce<Date | undefined>((latest, offer) => {
+    const updatedAt = offer.updatedAt;
+
+    if (!updatedAt) return latest;
+    if (!latest || updatedAt > latest) return updatedAt;
+
+    return latest;
+  }, undefined);
 
   const views = offers.map((offer) => {
       const history = histories.get(String(offer._id)) || [];
@@ -109,6 +118,7 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
       page: 1,
       pageSize,
       totalPages: 1,
+      listUpdatedAt: latestListUpdate?.toISOString(),
     };
   }
 
@@ -122,6 +132,7 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
     page,
     pageSize,
     totalPages,
+    listUpdatedAt: latestListUpdate?.toISOString(),
   };
 }
 

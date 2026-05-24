@@ -48,6 +48,7 @@ export default function Home() {
   const [collectorState, setCollectorState] = useState<LoadState>("idle");
   const [collectorMessage, setCollectorMessage] = useState("");
   const [cronSecret, setCronSecret] = useState("");
+  const [listUpdatedAt, setListUpdatedAt] = useState<string | null>(null);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     brands: [],
     models: [],
@@ -107,6 +108,7 @@ export default function Home() {
         total: payload.total || 0,
         totalPages: payload.totalPages || 1,
       });
+      setListUpdatedAt(payload.listUpdatedAt || null);
       setLoadingProgress(100);
       setSelectedCarId((current) =>
         payload.cars?.some((car: CarOfferView) => car.id === current)
@@ -403,9 +405,16 @@ export default function Home() {
 
         <section className="flex flex-col gap-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <h2 className="text-lg font-semibold text-white">
-              Auta ({pagination.total})
-            </h2>
+            <div>
+              <h2 className="text-lg font-semibold text-white">
+                Auta ({pagination.total})
+              </h2>
+              {listUpdatedAt && (
+                <p className="mt-1 text-sm text-slate-400">
+                  Ostatnia aktualizacja: {formatDateTime(listUpdatedAt)}
+                </p>
+              )}
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               <label className="flex h-10 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200">
                 Na stronie
@@ -687,6 +696,14 @@ function formatMileage(value?: number) {
 function formatDate(value?: string) {
   if (!value) return "-";
   return new Intl.DateTimeFormat("pl-PL").format(new Date(value));
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("pl-PL", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
 }
 
 function normalizePageSize(
