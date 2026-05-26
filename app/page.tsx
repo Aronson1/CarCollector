@@ -213,7 +213,6 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewImage]);
 
-
   useEffect(() => {
     function updateScrollTopVisibility() {
       const hasScrollableContent =
@@ -234,6 +233,63 @@ export default function Home() {
       window.removeEventListener("scroll", updateScrollTopVisibility);
     };
   }, [cars, selectedCarId, pagination.pageSize]);
+
+  const paginationControls = (
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="flex h-10 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200">
+        Na stronie
+        <select
+          className="bg-slate-900 text-white outline-none"
+          onChange={(event) => {
+            const nextPageSize = event.target.value as PageSizeValue;
+            setPagination((current) => ({
+              ...current,
+              page: 1,
+              pageSize: nextPageSize,
+            }));
+            void loadCars(filters, 1, nextPageSize);
+          }}
+          value={pagination.pageSize}
+        >
+          <option value="10">10</option>
+          <option value="30">30</option>
+          <option value="60">60</option>
+          <option value="100">100</option>
+          <option value="all">Wszystkie</option>
+        </select>
+      </label>
+      <button
+        className="h-10 rounded border border-slate-700 px-3 text-sm font-semibold text-slate-100 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={pagination.page <= 1 || pagination.pageSize === "all"}
+        onClick={() => {
+          const nextPage = Math.max(1, pagination.page - 1);
+          void loadCars(filters, nextPage, pagination.pageSize);
+        }}
+        type="button"
+      >
+        Poprzednia
+      </button>
+      <span className="text-sm text-slate-400">
+        {pagination.pageSize === "all"
+          ? "Wszystkie"
+          : `${pagination.page} / ${pagination.totalPages}`}
+      </span>
+      <button
+        className="h-10 rounded border border-slate-700 px-3 text-sm font-semibold text-slate-100 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
+        disabled={
+          pagination.page >= pagination.totalPages ||
+          pagination.pageSize === "all"
+        }
+        onClick={() => {
+          const nextPage = Math.min(pagination.totalPages, pagination.page + 1);
+          void loadCars(filters, nextPage, pagination.pageSize);
+        }}
+        type="button"
+      >
+        Następna
+      </button>
+    </div>
+  );
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -366,7 +422,10 @@ export default function Home() {
         )}
         {loadState === "loading" && (
           <div aria-label="Ładowanie danych">
-            <LinearProgress aria-label="Loading..." sx={loadingProgressSx} />
+            <LinearProgress
+              aria-label="Loading..."
+              sx={loadingProgressSx}
+            />
           </div>
         )}
 
@@ -382,63 +441,7 @@ export default function Home() {
                 </p>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex h-10 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200">
-                Na stronie
-                <select
-                  className="bg-slate-900 text-white outline-none"
-                  onChange={(event) => {
-                    const nextPageSize = event.target.value as PageSizeValue;
-                    setPagination((current) => ({
-                      ...current,
-                      page: 1,
-                      pageSize: nextPageSize,
-                    }));
-                    void loadCars(filters, 1, nextPageSize);
-                  }}
-                  value={pagination.pageSize}
-                >
-                  <option value="10">10</option>
-                  <option value="30">30</option>
-                  <option value="60">60</option>
-                  <option value="100">100</option>
-                  <option value="all">Wszystkie</option>
-                </select>
-              </label>
-              <button
-                className="h-10 rounded border border-slate-700 px-3 text-sm font-semibold text-slate-100 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={pagination.page <= 1 || pagination.pageSize === "all"}
-                onClick={() => {
-                  const nextPage = Math.max(1, pagination.page - 1);
-                  void loadCars(filters, nextPage, pagination.pageSize);
-                }}
-                type="button"
-              >
-                Poprzednia
-              </button>
-              <span className="text-sm text-slate-400">
-                {pagination.pageSize === "all"
-                  ? "Wszystkie"
-                  : `${pagination.page} / ${pagination.totalPages}`}
-              </span>
-              <button
-                className="h-10 rounded border border-slate-700 px-3 text-sm font-semibold text-slate-100 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={
-                  pagination.page >= pagination.totalPages ||
-                  pagination.pageSize === "all"
-                }
-                onClick={() => {
-                  const nextPage = Math.min(
-                    pagination.totalPages,
-                    pagination.page + 1,
-                  );
-                  void loadCars(filters, nextPage, pagination.pageSize);
-                }}
-                type="button"
-              >
-                Następna
-              </button>
-            </div>
+            {paginationControls}
           </div>
 
           {cars.length === 0 && loadState !== "loading" ? (
@@ -596,6 +599,11 @@ export default function Home() {
                   </article>
                 );
               })}
+            </div>
+          )}
+          {cars.length > 0 && (
+            <div className="flex justify-end border-t border-slate-800 pt-3">
+              {paginationControls}
             </div>
           )}
         </section>
