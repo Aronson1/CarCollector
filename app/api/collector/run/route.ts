@@ -7,14 +7,6 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  return handleCollectorRun(request);
-}
-
-export async function POST(request: Request) {
-  return handleCollectorRun(request);
-}
-
-async function handleCollectorRun(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
 
   if (!cronSecret) {
@@ -28,7 +20,11 @@ async function handleCollectorRun(request: Request) {
     return NextResponse.json({ message: "Unauthorized." }, { status: 401 });
   }
 
-  return runAuthorizedCollector();
+  return runCollectorRequest();
+}
+
+export async function POST() {
+  return runCollectorRequest();
 }
 
 function isAuthorized(request: Request, cronSecret: string): boolean {
@@ -41,7 +37,7 @@ function isAuthorized(request: Request, cronSecret: string): boolean {
   return headerSecret === cronSecret || bearerSecret === cronSecret;
 }
 
-async function runAuthorizedCollector() {
+async function runCollectorRequest() {
   try {
     const result = await runCollector();
     return NextResponse.json(result);
