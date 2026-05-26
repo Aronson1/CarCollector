@@ -47,13 +47,11 @@ export default function Home() {
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [collectorState, setCollectorState] = useState<LoadState>("idle");
   const [collectorMessage, setCollectorMessage] = useState("");
-  const [cronSecret, setCronSecret] = useState("");
   const [listUpdatedAt, setListUpdatedAt] = useState<string | null>(null);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     brands: [],
     models: [],
   });
-  const [loadingProgress, setLoadingProgress] = useState(0);
   const [pagination, setPagination] = useState<{
     page: number;
     pageSize: PageSizeValue;
@@ -79,7 +77,6 @@ export default function Home() {
     nextPageSize = pagination.pageSize,
   ) {
     setLoadState("loading");
-    setLoadingProgress(12);
     setCollectorMessage("");
 
     const params = new URLSearchParams();
@@ -109,7 +106,6 @@ export default function Home() {
         totalPages: payload.totalPages || 1,
       });
       setListUpdatedAt(payload.listUpdatedAt || null);
-      setLoadingProgress(100);
       setSelectedCarId((current) =>
         payload.cars?.some((car: CarOfferView) => car.id === current)
           ? current
@@ -121,7 +117,6 @@ export default function Home() {
       setCollectorMessage(
         error instanceof Error ? error.message : "Nie udało się pobrać danych.",
       );
-      setLoadingProgress(100);
       setLoadState("error");
     }
   }
@@ -161,9 +156,6 @@ export default function Home() {
     try {
       const response = await fetch("/api/collector/run", {
         method: "POST",
-        headers: {
-          "x-cron-secret": cronSecret,
-        },
       });
       const payload = await response.json();
 
@@ -221,19 +213,6 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewImage]);
 
-  useEffect(() => {
-    if (loadState !== "loading") {
-      return undefined;
-    }
-
-    const interval = window.setInterval(() => {
-      setLoadingProgress((current) =>
-        current >= 88 ? current : Math.min(88, current + 8),
-      );
-    }, 250);
-
-    return () => window.clearInterval(interval);
-  }, [loadState]);
 
   useEffect(() => {
     function updateScrollTopVisibility() {
@@ -268,15 +247,7 @@ export default function Home() {
               Panel monitorowania cen
             </h1>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              aria-label="Collector secret"
-              className="h-10 min-w-64 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400"
-              onChange={(event) => setCronSecret(event.target.value)}
-              placeholder="CRON_SECRET"
-              type="password"
-              value={cronSecret}
-            />
+          <div>
             <button
               className="h-10 rounded bg-cyan-400 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={collectorState === "loading"}
@@ -395,11 +366,7 @@ export default function Home() {
         )}
         {loadState === "loading" && (
           <div aria-label="Ładowanie danych">
-            <LinearProgress
-              variant="determinate"
-              value={loadingProgress}
-              sx={loadingProgressSx}
-            />
+            <LinearProgress aria-label="Loading..." sx={loadingProgressSx} />
           </div>
         )}
 
