@@ -1,14 +1,26 @@
-import type { ArvalAnnouncement, NormalizedArvalOffer, PriceVector } from "./types";
+import type {
+  ArvalAnnouncement,
+  NormalizedArvalOffer,
+  PriceVector,
+  PurchaseOption,
+} from "./types";
 
 export function toFinitePrice(value: unknown): number {
   const price = Number(value);
   return Number.isFinite(price) ? price : 0;
 }
 
-export function normalizePriceVector(announcement: Pick<
-  ArvalAnnouncement,
-  "reLeasePriceNet" | "reLeasePrice2Net" | "reLeasePrice3Net"
->): PriceVector {
+export function normalizePriceVector(
+  announcement: Pick<
+    ArvalAnnouncement,
+    "reLeasePriceNet" | "reLeasePrice2Net" | "reLeasePrice3Net" | "salePriceNet"
+  >,
+  purchaseOption: PurchaseOption = "release",
+): PriceVector {
+  if (purchaseOption === "sale") {
+    return [toFinitePrice(announcement.salePriceNet)];
+  }
+
   return [
     toFinitePrice(announcement.reLeasePriceNet),
     toFinitePrice(announcement.reLeasePrice2Net),
@@ -27,11 +39,13 @@ export function hasPriceChanged(history: PriceVector[]): boolean {
 
 export function normalizeArvalAnnouncement(
   announcement: ArvalAnnouncement,
+  purchaseOption: PurchaseOption = announcement.purchaseOption || "release",
 ): NormalizedArvalOffer {
   const externalId = String(announcement.id);
 
   return {
     source: "arval",
+    purchaseOption,
     externalId,
     offerUrl: announcement.offerUrl,
     imageUrl: announcement.mainImage || announcement.mainUrl,
@@ -45,6 +59,6 @@ export function normalizeArvalAnnouncement(
     rawCreatedAt: announcement.createdAt ? new Date(announcement.createdAt) : undefined,
     rawUpdatedAt: announcement.updatedAt ? new Date(announcement.updatedAt) : undefined,
     rawData: announcement,
-    prices: normalizePriceVector(announcement),
+    prices: normalizePriceVector(announcement, purchaseOption),
   };
 }

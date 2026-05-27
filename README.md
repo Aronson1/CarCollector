@@ -15,9 +15,10 @@ Set `MONGODB_URI` to MongoDB Atlas for hosted data, or leave it unset locally to
 
 ## API
 
-- `GET /api/cars` returns car offers with price history. Supported filters: `id`, `brand`, `model`, `changedOnly`.
-- `GET /api/cars/filters` returns available brands and models for autocomplete filters.
-- `GET` or `POST /api/collector/run` fetches Arval offers and stores price snapshots. It requires `x-cron-secret` or `Authorization: Bearer <CRON_SECRET>`.
+- `GET /api/cars` returns car offers with price history. Supported filters: `purchaseOption`, `id`, `brand`, `model`, `changedOnly`.
+- `GET /api/cars/filters` returns available brands and models for autocomplete filters. Pass `purchaseOption=release|sale` to scope options.
+- `GET /api/collector/run` fetches both Arval release and sale offers for cron usage. It requires `x-cron-secret` or `Authorization: Bearer <CRON_SECRET>`.
+- `POST /api/collector/run` fetches one mode from the app. Send `{ "purchaseOption": "release" }` or `{ "purchaseOption": "sale" }`.
 
 ## Migration
 

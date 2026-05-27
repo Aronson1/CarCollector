@@ -1,13 +1,15 @@
-import type { ArvalAnnouncement } from "../types";
+import type { ArvalAnnouncement, PurchaseOption } from "../types";
 
 const defaultArvalBaseUrl = "https://arval-prod-euw-appservice-portalapi.azurewebsites.net";
 
 export interface FetchArvalAnnouncementsOptions {
   pageSize?: number;
+  purchaseOption?: PurchaseOption;
 }
 
 export async function fetchArvalAnnouncements({
   pageSize = 400,
+  purchaseOption = "release",
 }: FetchArvalAnnouncementsOptions = {}): Promise<ArvalAnnouncement[]> {
   const baseUrl = process.env.ARVAL_API_BASE_URL || defaultArvalBaseUrl;
   const path = process.env.ARVAL_ANNOUNCEMENTS_PATH || "/api/Announcements/17";
@@ -18,7 +20,7 @@ export async function fetchArvalAnnouncements({
     pageNumber: "1",
     pageSize: String(pageSize),
     priceType: "net",
-    purchaseOption: "release",
+    purchaseOption,
   }).toString();
 
   const response = await fetch(url, {

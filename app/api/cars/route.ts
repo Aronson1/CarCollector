@@ -10,6 +10,7 @@ export async function GET(request: Request) {
 
   try {
     const result = await getCars({
+      purchaseOption: parsePurchaseOption(searchParams.get("purchaseOption")),
       id: searchParams.get("id") || undefined,
       brand: searchParams.get("brand") || undefined,
       model: searchParams.get("model") || undefined,
@@ -31,6 +32,10 @@ export async function GET(request: Request) {
       { status: 500 },
     );
   }
+}
+
+function parsePurchaseOption(value: string | null) {
+  return value === "sale" ? "sale" : "release";
 }
 
 function parsePage(value: string | null) {

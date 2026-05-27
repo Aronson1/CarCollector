@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { DatabaseUnavailableError } from "@/lib/db";
 import { runCollector } from "@/lib/services/collector";
+import type { PurchaseOption } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,11 +21,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ message: "Unauthorized." }, { status: 401 });
   }
 
-  return runCollectorRequest();
+  return runCollectorRequest("all");
 }
 
-export async function POST() {
-  return runCollectorRequest();
+export async function POST(request: Request) {
+  const purchaseOption = await parsePurchaseOption(request);
+  return runCollectorRequest(purchaseOption);
 }
 
 function isAuthorized(request: Request, cronSecret: string): boolean {
@@ -37,9 +39,9 @@ function isAuthorized(request: Request, cronSecret: string): boolean {
   return headerSecret === cronSecret || bearerSecret === cronSecret;
 }
 
-async function runCollectorRequest() {
+async function runCollectorRequest(purchaseOption: PurchaseOption | "all") {
   try {
-    const result = await runCollector();
+    const result = await runCollector(purchaseOption);
     return NextResponse.json(result);
   } catch (error) {
     console.error(error);
@@ -52,4 +54,18 @@ async function runCollectorRequest() {
       { status: 500 },
     );
   }
+}
+
+async function parsePurchaseOption(request: Request): Promise<PurchaseOption> {
+  try {
+    const body = await request.json();
+
+    if (body?.purchaseOption === "sale") {
+      return "sale";
+    }
+  } catch {
+    return "release";
+  }
+
+  return "release";
 }

@@ -15,7 +15,7 @@ import {
   Title,
   Tooltip,
 } from "chart.js";
-import type { CarOfferView } from "@/lib/types";
+import type { CarOfferView, PurchaseOption } from "@/lib/types";
 
 ChartJS.register(
   CategoryScale,
@@ -37,6 +37,8 @@ interface FilterOptions {
 
 export default function Home() {
   const [cars, setCars] = useState<CarOfferView[]>([]);
+  const [purchaseOption, setPurchaseOption] =
+    useState<PurchaseOption>("release");
   const [selectedCarId, setSelectedCarId] = useState<string | null>(null);
   const [canScroll, setCanScroll] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -46,6 +48,8 @@ export default function Home() {
   } | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [collectorState, setCollectorState] = useState<LoadState>("idle");
+  const [collectorPurchaseOption, setCollectorPurchaseOption] =
+    useState<PurchaseOption | null>(null);
   const [collectorMessage, setCollectorMessage] = useState("");
   const [listUpdatedAt, setListUpdatedAt] = useState<string | null>(null);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
@@ -64,22 +68,20 @@ export default function Home() {
     totalPages: 1,
   });
   const [filters, setFilters] = useState({
-    id: "",
-    brand: "",
-    model: "",
-    changedOnly: false,
-    sort: "newest",
+    ...createDefaultFilters(),
   });
 
   async function loadCars(
     nextFilters = filters,
     nextPage = pagination.page,
     nextPageSize = pagination.pageSize,
+    nextPurchaseOption = purchaseOption,
   ) {
     setLoadState("loading");
     setCollectorMessage("");
 
     const params = new URLSearchParams();
+    params.set("purchaseOption", nextPurchaseOption);
     if (nextFilters.id) params.set("id", nextFilters.id);
     if (nextFilters.brand) params.set("brand", nextFilters.brand);
     if (nextFilters.model) params.set("model", nextFilters.model);
@@ -121,8 +123,12 @@ export default function Home() {
     }
   }
 
-  async function loadFilterOptions(brand = filters.brand) {
+  async function loadFilterOptions(
+    brand = filters.brand,
+    nextPurchaseOption = purchaseOption,
+  ) {
     const params = new URLSearchParams();
+    params.set("purchaseOption", nextPurchaseOption);
     if (brand) params.set("brand", brand);
 
     try {
@@ -149,13 +155,16 @@ export default function Home() {
     }
   }
 
-  async function runCollector() {
+  async function runCollector(nextPurchaseOption: PurchaseOption) {
     setCollectorState("loading");
+    setCollectorPurchaseOption(nextPurchaseOption);
     setCollectorMessage("");
 
     try {
       const response = await fetch("/api/collector/run", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ purchaseOption: nextPurchaseOption }),
       });
       const payload = await response.json();
 
@@ -163,32 +172,51 @@ export default function Home() {
         throw new Error(payload.message || "Collector run failed.");
       }
 
+      const label = getPurchaseOptionLabel(nextPurchaseOption).toLowerCase();
       setCollectorMessage(
-        `Fetched ${payload.fetched}, snapshots ${payload.snapshotsCreated}, unchanged ${payload.skippedUnchanged}.`,
+        `${label}: fetched ${payload.fetched}, snapshots ${payload.snapshotsCreated}, unchanged ${payload.skippedUnchanged}.`,
       );
       setCollectorState("idle");
-      await loadCars(filters, pagination.page, pagination.pageSize);
+      setCollectorPurchaseOption(null);
+
+      if (nextPurchaseOption === purchaseOption) {
+        await loadCars(filters, pagination.page, pagination.pageSize);
+      }
     } catch (error) {
       console.error(error);
       setCollectorMessage(
         error instanceof Error ? error.message : "Collector run failed.",
       );
       setCollectorState("error");
+      setCollectorPurchaseOption(null);
     }
   }
 
   function resetFilters() {
-    const nextFilters = {
-      id: "",
-      brand: "",
-      model: "",
-      changedOnly: false,
-      sort: "newest",
-    };
+    const nextFilters = createDefaultFilters();
     setFilters(nextFilters);
     setPagination((current) => ({ ...current, page: 1 }));
-    void loadFilterOptions("");
-    void loadCars(nextFilters, 1, pagination.pageSize);
+    void loadFilterOptions("", purchaseOption);
+    void loadCars(nextFilters, 1, pagination.pageSize, purchaseOption);
+  }
+
+  function changePurchaseOption(nextPurchaseOption: PurchaseOption) {
+    if (nextPurchaseOption === purchaseOption) {
+      return;
+    }
+
+    const nextFilters = createDefaultFilters();
+    setPurchaseOption(nextPurchaseOption);
+    setFilters(nextFilters);
+    setSelectedCarId(null);
+    setPagination((current) => ({
+      ...current,
+      page: 1,
+      total: 0,
+      totalPages: 1,
+    }));
+    void loadFilterOptions("", nextPurchaseOption);
+    void loadCars(nextFilters, 1, pagination.pageSize, nextPurchaseOption);
   }
 
   useEffect(() => {
@@ -290,6 +318,8 @@ export default function Home() {
       </button>
     </div>
   );
+  const priceLabel =
+    purchaseOption === "sale" ? "Cena zakupu netto" : "Cena najmu netto";
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -303,109 +333,151 @@ export default function Home() {
               Panel monitorowania cen
             </h1>
           </div>
-          <div>
+          <div className="flex flex-col gap-2 sm:flex-row">
             <button
-              className="h-10 rounded bg-cyan-400 px-4 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+              className={`h-10 rounded px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                purchaseOption === "release"
+                  ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                  : "border border-cyan-400 text-cyan-100 hover:bg-cyan-400/10"
+              }`}
               disabled={collectorState === "loading"}
-              onClick={runCollector}
+              onClick={() => runCollector("release")}
               type="button"
             >
-              {collectorState === "loading" ? "Pobieranie..." : "Run collector"}
+              {collectorPurchaseOption === "release"
+                ? "Pobieranie najmu..."
+                : "Pobierz najem"}
+            </button>
+            <button
+              className={`h-10 rounded px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                purchaseOption === "sale"
+                  ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                  : "border border-cyan-400 text-cyan-100 hover:bg-cyan-400/10"
+              }`}
+              disabled={collectorState === "loading"}
+              onClick={() => runCollector("sale")}
+              type="button"
+            >
+              {collectorPurchaseOption === "sale"
+                ? "Pobieranie zakupu..."
+                : "Pobierz zakup"}
             </button>
           </div>
         </header>
 
-        <section className="grid gap-3 border-b border-slate-800 pb-5 md:grid-cols-[1fr_1fr_1fr_auto_auto_auto]">
-          <input
-            className="h-10 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400"
-            onChange={(event) =>
-              setFilters((current) => ({ ...current, id: event.target.value }))
-            }
-            placeholder="ID"
-            type="search"
-            value={filters.id}
-          />
-          <Autocomplete
-            freeSolo
-            inputValue={filters.brand}
-            onInputChange={(_, value) => {
-              setFilters((current) => ({
-                ...current,
-                brand: value,
-                model: "",
-              }));
-              void loadFilterOptions(value);
-            }}
-            options={filterOptions.brands}
-            renderInput={(params) => (
-              <TextField {...params} label="Marka" sx={autocompleteSx} />
-            )}
-            size="small"
-            slotProps={autocompleteSlotProps}
-            value={filters.brand || null}
-          />
-          <Autocomplete
-            freeSolo
-            inputValue={filters.model}
-            onInputChange={(_, value) =>
-              setFilters((current) => ({
-                ...current,
-                model: value,
-              }))
-            }
-            options={filterOptions.models}
-            renderInput={(params) => (
-              <TextField {...params} label="Model" sx={autocompleteSx} />
-            )}
-            size="small"
-            slotProps={autocompleteSlotProps}
-            value={filters.model || null}
-          />
-          <label className="flex h-10 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200">
+        <section className="flex flex-col gap-3 border-b border-slate-800 pb-5">
+          <div className="inline-flex w-fit rounded border border-slate-700 bg-slate-900 p-1">
+            {(["release", "sale"] as const).map((option) => (
+              <button
+                className={`h-9 rounded px-4 text-sm font-semibold transition ${
+                  purchaseOption === option
+                    ? "bg-cyan-400 text-slate-950"
+                    : "text-slate-300 hover:bg-slate-800"
+                }`}
+                key={option}
+                onClick={() => changePurchaseOption(option)}
+                type="button"
+              >
+                {getPurchaseOptionLabel(option)}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto_auto_auto]">
             <input
-              checked={filters.changedOnly}
-              className="h-4 w-4 accent-cyan-400"
+              className="h-10 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400"
               onChange={(event) =>
                 setFilters((current) => ({
                   ...current,
-                  changedOnly: event.target.checked,
+                  id: event.target.value,
                 }))
               }
-              type="checkbox"
+              placeholder="ID"
+              type="search"
+              value={filters.id}
             />
-            Zmiany ceny
-          </label>
-          <select
-            aria-label="Sortowanie"
-            className="h-10 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400"
-            onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
-                sort: event.target.value,
-              }))
-            }
-            value={filters.sort}
-          >
-            <option value="newest">Najnowszy wpis</option>
-            <option value="oldest">Najstarszy wpis</option>
-            <option value="priceAsc">Cena rosnąco</option>
-            <option value="priceDesc">Cena malejąco</option>
-          </select>
-          <div className="flex gap-2">
-            <button
-              className="h-10 rounded bg-white px-4 text-sm font-semibold text-slate-950 transition hover:bg-slate-200"
-              onClick={() => loadCars(filters, 1, pagination.pageSize)}
-              type="button"
+            <Autocomplete
+              freeSolo
+              inputValue={filters.brand}
+              onInputChange={(_, value) => {
+                setFilters((current) => ({
+                  ...current,
+                  brand: value,
+                  model: "",
+                }));
+                void loadFilterOptions(value);
+              }}
+              options={filterOptions.brands}
+              renderInput={(params) => (
+                <TextField {...params} label="Marka" sx={autocompleteSx} />
+              )}
+              size="small"
+              slotProps={autocompleteSlotProps}
+              value={filters.brand || null}
+            />
+            <Autocomplete
+              freeSolo
+              inputValue={filters.model}
+              onInputChange={(_, value) =>
+                setFilters((current) => ({
+                  ...current,
+                  model: value,
+                }))
+              }
+              options={filterOptions.models}
+              renderInput={(params) => (
+                <TextField {...params} label="Model" sx={autocompleteSx} />
+              )}
+              size="small"
+              slotProps={autocompleteSlotProps}
+              value={filters.model || null}
+            />
+            <label className="flex h-10 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200">
+              <input
+                checked={filters.changedOnly}
+                className="h-4 w-4 accent-cyan-400"
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    changedOnly: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              Zmiany ceny
+            </label>
+            <select
+              aria-label="Sortowanie"
+              className="h-10 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400"
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  sort: event.target.value,
+                }))
+              }
+              value={filters.sort}
             >
-              Filtruj
-            </button>
-            <button
-              className="h-10 rounded border border-slate-700 px-4 text-sm font-semibold text-slate-100 transition hover:border-slate-500"
-              onClick={resetFilters}
-              type="button"
-            >
-              Reset
-            </button>
+              <option value="newest">Najnowszy wpis</option>
+              <option value="oldest">Najstarszy wpis</option>
+              <option value="priceAsc">Cena rosnąco</option>
+              <option value="priceDesc">Cena malejąco</option>
+            </select>
+            <div className="flex gap-2">
+              <button
+                className="h-10 rounded bg-white px-4 text-sm font-semibold text-slate-950 transition hover:bg-slate-200"
+                onClick={() => loadCars(filters, 1, pagination.pageSize)}
+                type="button"
+              >
+                Filtruj
+              </button>
+              <button
+                className="h-10 rounded border border-slate-700 px-4 text-sm font-semibold text-slate-100 transition hover:border-slate-500"
+                onClick={resetFilters}
+                type="button"
+              >
+                Reset
+              </button>
+            </div>
           </div>
         </section>
 
@@ -433,7 +505,8 @@ export default function Home() {
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-white">
-                Auta ({pagination.total})
+                Auta - {getPurchaseOptionLabel(purchaseOption).toLowerCase()} (
+                {pagination.total})
               </h2>
               {listUpdatedAt && (
                 <p className="mt-1 text-sm text-slate-400">
@@ -502,16 +575,20 @@ export default function Home() {
                         <p className="mt-1 text-sm text-slate-400">
                           {car.brand} / {car.model} / ID {car.externalId}
                         </p>
-                        <dl className="mt-3 grid gap-2 text-sm text-slate-300 sm:grid-cols-4">
+                        <dl className="mt-3 grid gap-2 text-sm text-slate-300 sm:grid-cols-5">
                           <div>
-                            <dt className="text-slate-500">Data ogłoszenia</dt>
-                            <dd>{formatDate(car.announcementCreatedAt)}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-slate-500">Cena netto</dt>
+                            <dt className="text-slate-500">{priceLabel}</dt>
                             <dd className="font-semibold text-white">
                               {formatPrice(car.latestPrices[0])}
                             </dd>
+                          </div>
+                          <div>
+                            <dt className="text-slate-500">Rok produkcji</dt>
+                            <dd>{formatYear(car.details.registrationYear)}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-slate-500">Data ogłoszenia</dt>
+                            <dd>{formatDate(car.announcementCreatedAt)}</dd>
                           </div>
                           <div>
                             <dt className="text-slate-500">Przebieg</dt>
@@ -570,7 +647,7 @@ export default function Home() {
                               ),
                               datasets: [
                                 {
-                                  label: "Cena netto",
+                                  label: priceLabel,
                                   data: car.priceHistory.map(
                                     (snapshot) => snapshot.prices[0] || null,
                                   ),
@@ -663,9 +740,27 @@ function formatPrice(value?: number) {
   }).format(value);
 }
 
+function createDefaultFilters() {
+  return {
+    id: "",
+    brand: "",
+    model: "",
+    changedOnly: false,
+    sort: "newest",
+  };
+}
+
+function getPurchaseOptionLabel(purchaseOption: PurchaseOption) {
+  return purchaseOption === "sale" ? "Zakup" : "Najem";
+}
+
 function formatMileage(value?: number) {
   if (!value) return "-";
   return `${new Intl.NumberFormat("pl-PL").format(value)} km`;
+}
+
+function formatYear(value?: number) {
+  return value ? String(value) : "-";
 }
 
 function formatDate(value?: string) {

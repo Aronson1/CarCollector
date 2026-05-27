@@ -1,10 +1,17 @@
 import { connectToDatabase } from "../db";
 import { CarOffer, PriceSnapshot } from "../models/car";
 import { hasPriceChanged } from "../prices";
-import type { CarDetails, CarOfferView, PriceSnapshotView } from "../types";
+import type {
+  CarDetails,
+  CarOfferView,
+  PriceSnapshotView,
+  PurchaseOption,
+} from "../types";
+import { ensurePurchaseOptionMigration } from "./migrations";
 import type { Types } from "mongoose";
 
 export interface GetCarsFilters {
+  purchaseOption?: PurchaseOption;
   id?: string;
   brand?: string;
   model?: string;
@@ -28,15 +35,22 @@ export interface CarSearchResult {
   listUpdatedAt?: string;
 }
 
-export async function getCarFilterOptions(brand?: string): Promise<CarFilterOptions> {
+export async function getCarFilterOptions(
+  purchaseOption: PurchaseOption = "release",
+  brand?: string,
+): Promise<CarFilterOptions> {
   await connectToDatabase();
+  await ensurePurchaseOptionMigration();
 
   const modelQuery = brand
-    ? { brand: { $regex: escapeRegex(brand), $options: "i" } }
-    : {};
+    ? {
+        purchaseOption,
+        brand: { $regex: escapeRegex(brand), $options: "i" },
+      }
+    : { purchaseOption };
 
   const [brands, models] = await Promise.all([
-    CarOffer.distinct("brand"),
+    CarOffer.distinct("brand", { purchaseOption }),
     CarOffer.distinct("model", modelQuery),
   ]);
 
@@ -48,12 +62,15 @@ export async function getCarFilterOptions(brand?: string): Promise<CarFilterOpti
 
 export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult> {
   await connectToDatabase();
+  await ensurePurchaseOptionMigration();
+  const purchaseOption = filters.purchaseOption || "release";
 
   const query: {
+    purchaseOption: PurchaseOption;
     externalId?: string;
     brand?: { $regex: string; $options: string };
     model?: { $regex: string; $options: string };
-  } = {};
+  } = { purchaseOption };
 
   if (filters.id) {
     query.externalId = filters.id;
@@ -85,6 +102,7 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
       return {
         id: String(offer._id),
         source: "arval",
+        purchaseOption,
         externalId: offer.externalId,
         offerUrl: offer.offerUrl || undefined,
         imageUrl: offer.imageUrl || undefined,
@@ -185,6 +203,8 @@ async function getHistories(
     const history = histories.get(offerId) || [];
     history.push({
       id: String(snapshot._id),
+      purchaseOption:
+        snapshot.purchaseOption === "sale" ? "sale" : "release",
       fetchedAt: snapshot.fetchedAt.toISOString(),
       rawUpdatedAt: snapshot.rawUpdatedAt?.toISOString(),
       prices: snapshot.prices,

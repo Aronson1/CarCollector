@@ -10,6 +10,7 @@ export async function GET(request: Request) {
 
   try {
     const filters = await getCarFilterOptions(
+      parsePurchaseOption(searchParams.get("purchaseOption")),
       searchParams.get("brand") || undefined,
     );
 
@@ -25,4 +26,8 @@ export async function GET(request: Request) {
       { status: 500 },
     );
   }
+}
+
+function parsePurchaseOption(value: string | null) {
+  return value === "sale" ? "sale" : "release";
 }

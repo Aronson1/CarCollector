@@ -1,5 +1,7 @@
 export type CarSource = "arval";
 
+export type PurchaseOption = "release" | "sale";
+
 export type PriceVector = number[];
 
 export interface CarDetails {
@@ -13,6 +15,7 @@ export interface CarDetails {
 export interface CarOfferView {
   id: string;
   source: CarSource;
+  purchaseOption: PurchaseOption;
   externalId: string;
   offerUrl?: string;
   imageUrl?: string;
@@ -33,6 +36,7 @@ export interface CarOfferView {
 
 export interface PriceSnapshotView {
   id: string;
+  purchaseOption: PurchaseOption;
   fetchedAt: string;
   rawUpdatedAt?: string;
   prices: PriceVector;
@@ -53,13 +57,16 @@ export interface ArvalAnnouncement {
   registrationNumber?: string;
   labelCode?: string;
   details?: CarDetails;
+  purchaseOption?: PurchaseOption;
   reLeasePriceNet?: number | string | null;
   reLeasePrice2Net?: number | string | null;
   reLeasePrice3Net?: number | string | null;
+  salePriceNet?: number | string | null;
 }
 
 export interface NormalizedArvalOffer {
   source: CarSource;
+  purchaseOption: PurchaseOption;
   externalId: string;
   offerUrl?: string;
   imageUrl?: string;

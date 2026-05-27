@@ -14,6 +14,13 @@ const carDetailsSchema = new Schema(
 const carOfferSchema = new Schema(
   {
     source: { type: String, required: true, enum: ["arval"], index: true },
+    purchaseOption: {
+      type: String,
+      required: true,
+      enum: ["release", "sale"],
+      default: "release",
+      index: true,
+    },
     externalId: { type: String, required: true, index: true },
     offerUrl: String,
     imageUrl: String,
@@ -31,7 +38,10 @@ const carOfferSchema = new Schema(
   { timestamps: true },
 );
 
-carOfferSchema.index({ source: 1, externalId: 1 }, { unique: true });
+carOfferSchema.index(
+  { source: 1, purchaseOption: 1, externalId: 1 },
+  { unique: true },
+);
 
 const priceSnapshotSchema = new Schema(
   {
@@ -39,6 +49,13 @@ const priceSnapshotSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "CarOffer",
       required: true,
+      index: true,
+    },
+    purchaseOption: {
+      type: String,
+      required: true,
+      enum: ["release", "sale"],
+      default: "release",
       index: true,
     },
     fetchedAt: { type: Date, required: true, index: true },

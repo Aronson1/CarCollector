@@ -2,23 +2,56 @@ import { connectToDatabase } from "../db";
 import { CarOffer, PriceSnapshot } from "../models/car";
 import { pricesEqual, normalizeArvalAnnouncement } from "../prices";
 import { fetchArvalAnnouncements } from "../sources/arval";
+import type { PurchaseOption } from "../types";
+import { ensurePurchaseOptionMigration } from "./migrations";
+
+export type CollectorPurchaseOption = PurchaseOption | "all";
 
 export interface CollectorRunResult {
+  purchaseOption: CollectorPurchaseOption;
   fetched: number;
   offersUpserted: number;
   snapshotsCreated: number;
   skippedUnchanged: number;
+  runs?: CollectorRunResult[];
 }
 
-export async function runCollector(): Promise<CollectorRunResult> {
-  await connectToDatabase();
+const purchaseOptions: PurchaseOption[] = ["release", "sale"];
 
-  const announcements = await fetchArvalAnnouncements();
+export async function runCollector(
+  purchaseOption: CollectorPurchaseOption = "all",
+): Promise<CollectorRunResult> {
+  await connectToDatabase();
+  await ensurePurchaseOptionMigration();
+
+  if (purchaseOption === "all") {
+    const runs = await Promise.all(
+      purchaseOptions.map((option) => runCollectorForPurchaseOption(option)),
+    );
+
+    return {
+      purchaseOption,
+      fetched: sumRuns(runs, "fetched"),
+      offersUpserted: sumRuns(runs, "offersUpserted"),
+      snapshotsCreated: sumRuns(runs, "snapshotsCreated"),
+      skippedUnchanged: sumRuns(runs, "skippedUnchanged"),
+      runs,
+    };
+  }
+
+  return runCollectorForPurchaseOption(purchaseOption);
+}
+
+async function runCollectorForPurchaseOption(
+  purchaseOption: PurchaseOption,
+): Promise<CollectorRunResult> {
+  const announcements = await fetchArvalAnnouncements({ purchaseOption });
   const normalizedOffers = announcements.map((announcement) =>
-    normalizeArvalAnnouncement(announcement),
+    normalizeArvalAnnouncement(announcement, purchaseOption),
   );
   const fetchedAt = new Date();
   const result: CollectorRunResult = {
+    purchaseOption,
     fetched: announcements.length,
     offersUpserted: normalizedOffers.length,
     snapshotsCreated: 0,
@@ -32,9 +65,14 @@ export async function runCollector(): Promise<CollectorRunResult> {
   await CarOffer.bulkWrite(
     normalizedOffers.map((normalized) => ({
       updateOne: {
-        filter: { source: normalized.source, externalId: normalized.externalId },
+        filter: {
+          source: normalized.source,
+          purchaseOption: normalized.purchaseOption,
+          externalId: normalized.externalId,
+        },
         update: {
           $set: {
+            purchaseOption: normalized.purchaseOption,
             offerUrl: normalized.offerUrl,
             imageUrl: normalized.imageUrl,
             fullName: normalized.fullName,
@@ -61,7 +99,7 @@ export async function runCollector(): Promise<CollectorRunResult> {
 
   const externalIds = normalizedOffers.map((offer) => offer.externalId);
   const offers = await CarOffer.find(
-    { source: "arval", externalId: { $in: externalIds } },
+    { source: "arval", purchaseOption, externalId: { $in: externalIds } },
     { _id: 1, externalId: 1 },
   ).lean();
   const offerByExternalId = new Map(
@@ -106,6 +144,7 @@ export async function runCollector(): Promise<CollectorRunResult> {
             $set: {
               rawUpdatedAt: normalized.rawUpdatedAt,
               rawData: normalized.rawData,
+              purchaseOption: normalized.purchaseOption,
             },
           },
         },
@@ -116,6 +155,7 @@ export async function runCollector(): Promise<CollectorRunResult> {
 
     newSnapshots.push({
       offerId: offer._id,
+      purchaseOption: normalized.purchaseOption,
       fetchedAt,
       rawUpdatedAt: normalized.rawUpdatedAt,
       prices: normalized.prices,
@@ -133,4 +173,11 @@ export async function runCollector(): Promise<CollectorRunResult> {
   }
 
   return result;
+}
+
+function sumRuns(
+  runs: CollectorRunResult[],
+  key: "fetched" | "offersUpserted" | "snapshotsCreated" | "skippedUnchanged",
+): number {
+  return runs.reduce((total, run) => total + run[key], 0);
 }
