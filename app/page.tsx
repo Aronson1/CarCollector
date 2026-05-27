@@ -29,6 +29,7 @@ ChartJS.register(
 
 type LoadState = "idle" | "loading" | "error";
 type PageSizeValue = "10" | "30" | "60" | "100" | "all";
+const purchaseOptions: PurchaseOption[] = ["release", "sale", "newRelease"];
 
 interface FilterOptions {
   brands: string[];
@@ -318,8 +319,7 @@ export default function Home() {
       </button>
     </div>
   );
-  const priceLabel =
-    purchaseOption === "sale" ? "Cena zakupu netto" : "Cena najmu netto";
+  const priceLabel = getPriceLabel(purchaseOption);
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -334,40 +334,29 @@ export default function Home() {
             </h1>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <button
-              className={`h-10 rounded px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                purchaseOption === "release"
-                  ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-                  : "border border-cyan-400 text-cyan-100 hover:bg-cyan-400/10"
-              }`}
-              disabled={collectorState === "loading"}
-              onClick={() => runCollector("release")}
-              type="button"
-            >
-              {collectorPurchaseOption === "release"
-                ? "Pobieranie najmu..."
-                : "Pobierz najem"}
-            </button>
-            <button
-              className={`h-10 rounded px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                purchaseOption === "sale"
-                  ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-                  : "border border-cyan-400 text-cyan-100 hover:bg-cyan-400/10"
-              }`}
-              disabled={collectorState === "loading"}
-              onClick={() => runCollector("sale")}
-              type="button"
-            >
-              {collectorPurchaseOption === "sale"
-                ? "Pobieranie zakupu..."
-                : "Pobierz zakup"}
-            </button>
+            {purchaseOptions.map((option) => (
+              <button
+                className={`h-10 rounded px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                  purchaseOption === option
+                    ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                    : "border border-cyan-400 text-cyan-100 hover:bg-cyan-400/10"
+                }`}
+                disabled={collectorState === "loading"}
+                key={option}
+                onClick={() => runCollector(option)}
+                type="button"
+              >
+                {collectorPurchaseOption === option
+                  ? `Pobieranie ${getPurchaseOptionShortLabel(option).toLowerCase()}...`
+                  : `Pobierz ${getPurchaseOptionShortLabel(option).toLowerCase()}`}
+              </button>
+            ))}
           </div>
         </header>
 
         <section className="flex flex-col gap-3 border-b border-slate-800 pb-5">
           <div className="inline-flex w-fit rounded border border-slate-700 bg-slate-900 p-1">
-            {(["release", "sale"] as const).map((option) => (
+            {purchaseOptions.map((option) => (
               <button
                 className={`h-9 rounded px-4 text-sm font-semibold transition ${
                   purchaseOption === option
@@ -590,10 +579,17 @@ export default function Home() {
                             <dt className="text-slate-500">Data ogłoszenia</dt>
                             <dd>{formatDate(car.announcementCreatedAt)}</dd>
                           </div>
-                          <div>
-                            <dt className="text-slate-500">Przebieg</dt>
-                            <dd>{formatMileage(car.details.mileage)}</dd>
-                          </div>
+                          {purchaseOption === "newRelease" ? (
+                            <div>
+                              <dt className="text-slate-500">Parametry</dt>
+                              <dd>{formatNewRentalDetails(car.details)}</dd>
+                            </div>
+                          ) : (
+                            <div>
+                              <dt className="text-slate-500">Przebieg</dt>
+                              <dd>{formatMileage(car.details.mileage)}</dd>
+                            </div>
+                          )}
                           <div>
                             <dt className="text-slate-500">Historia</dt>
                             <dd>{car.priceHistory.length} punktów</dd>
@@ -751,7 +747,21 @@ function createDefaultFilters() {
 }
 
 function getPurchaseOptionLabel(purchaseOption: PurchaseOption) {
-  return purchaseOption === "sale" ? "Zakup" : "Najem";
+  if (purchaseOption === "sale") return "Zakup używane";
+  if (purchaseOption === "newRelease") return "Najem nowe";
+  return "Najem używane";
+}
+
+function getPurchaseOptionShortLabel(purchaseOption: PurchaseOption) {
+  if (purchaseOption === "sale") return "zakup używane";
+  if (purchaseOption === "newRelease") return "najem nowe";
+  return "najem używane";
+}
+
+function getPriceLabel(purchaseOption: PurchaseOption) {
+  if (purchaseOption === "sale") return "Cena zakupu netto";
+  if (purchaseOption === "newRelease") return "Cena najmu netto";
+  return "Cena najmu netto";
 }
 
 function formatMileage(value?: number) {
@@ -761,6 +771,20 @@ function formatMileage(value?: number) {
 
 function formatYear(value?: number) {
   return value ? String(value) : "-";
+}
+
+function formatNewRentalDetails(details: CarOfferView["details"]) {
+  const values = [
+    details.contractMonths ? `${details.contractMonths} mies.` : null,
+    details.annualMileage
+      ? `${new Intl.NumberFormat("pl-PL").format(details.annualMileage)} km/rok`
+      : null,
+    details.downPayment
+      ? `${formatPrice(details.downPayment)} wpłaty`
+      : null,
+  ].filter(Boolean);
+
+  return values.length > 0 ? values.join(" / ") : "-";
 }
 
 function formatDate(value?: string) {

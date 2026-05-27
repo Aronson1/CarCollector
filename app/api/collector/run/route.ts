@@ -63,6 +63,10 @@ async function parsePurchaseOption(request: Request): Promise<PurchaseOption> {
     if (body?.purchaseOption === "sale") {
       return "sale";
     }
+
+    if (body?.purchaseOption === "newRelease") {
+      return "newRelease";
+    }
   } catch {
     return "release";
   }

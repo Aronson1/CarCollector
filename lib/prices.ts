@@ -1,5 +1,6 @@
 import type {
   ArvalAnnouncement,
+  ArvalNewCarOffer,
   NormalizedArvalOffer,
   PriceVector,
   PurchaseOption,
@@ -14,11 +15,18 @@ export function normalizePriceVector(
   announcement: Pick<
     ArvalAnnouncement,
     "reLeasePriceNet" | "reLeasePrice2Net" | "reLeasePrice3Net" | "salePriceNet"
-  >,
+  > &
+    Pick<ArvalNewCarOffer, "leasePrice" | "priceGridRental">,
   purchaseOption: PurchaseOption = "release",
 ): PriceVector {
   if (purchaseOption === "sale") {
     return [toFinitePrice(announcement.salePriceNet)];
+  }
+
+  if (purchaseOption === "newRelease") {
+    return [
+      toFinitePrice(announcement.leasePrice || announcement.priceGridRental),
+    ];
   }
 
   return [
@@ -60,5 +68,37 @@ export function normalizeArvalAnnouncement(
     rawUpdatedAt: announcement.updatedAt ? new Date(announcement.updatedAt) : undefined,
     rawData: announcement,
     prices: normalizePriceVector(announcement, purchaseOption),
+  };
+}
+
+export function normalizeArvalNewCarOffer(
+  offer: ArvalNewCarOffer,
+): NormalizedArvalOffer {
+  const externalId = String(offer.offerId);
+  const brand = offer.makeName || "Unknown";
+  const model = offer.modelName || "Unknown";
+  const catalogName = offer.vehicleCatalogName || offer.versionName;
+
+  return {
+    source: "arval",
+    purchaseOption: "newRelease",
+    externalId,
+    offerUrl: offer.url
+      ? new URL(offer.url, "https://www.arval.pl").toString()
+      : undefined,
+    imageUrl: offer.imagePath,
+    fullName: [brand, model, catalogName].filter(Boolean).join(" "),
+    brand,
+    model,
+    details: {
+      annualMileage: toFinitePrice(offer.mileage) || undefined,
+      contractMonths: toFinitePrice(offer.duration) || undefined,
+      downPayment: toFinitePrice(offer.downPayment) || undefined,
+      fuelTypeLabel: offer.fuelTypeName,
+      gearbox: offer.transmissionTypeName,
+    },
+    rawUpdatedAt: offer.updateDate ? new Date(offer.updateDate) : undefined,
+    rawData: offer,
+    prices: normalizePriceVector(offer, "newRelease"),
   };
 }

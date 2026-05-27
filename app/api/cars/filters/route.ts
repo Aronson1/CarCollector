@@ -29,5 +29,6 @@ export async function GET(request: Request) {
 }
 
 function parsePurchaseOption(value: string | null) {
+  if (value === "newRelease") return "newRelease";
   return value === "sale" ? "sale" : "release";
 }

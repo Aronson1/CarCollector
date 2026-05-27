@@ -3,10 +3,13 @@ import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 const carDetailsSchema = new Schema(
   {
     mileage: Number,
+    annualMileage: Number,
     registrationYear: Number,
     fuelTypeLabel: String,
     gearbox: String,
     warrantyMonths: Number,
+    contractMonths: Number,
+    downPayment: Number,
   },
   { _id: false },
 );
@@ -17,7 +20,7 @@ const carOfferSchema = new Schema(
     purchaseOption: {
       type: String,
       required: true,
-      enum: ["release", "sale"],
+      enum: ["release", "sale", "newRelease"],
       default: "release",
       index: true,
     },
@@ -54,7 +57,7 @@ const priceSnapshotSchema = new Schema(
     purchaseOption: {
       type: String,
       required: true,
-      enum: ["release", "sale"],
+      enum: ["release", "sale", "newRelease"],
       default: "release",
       index: true,
     },

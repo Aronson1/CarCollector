@@ -1,7 +1,12 @@
 import { connectToDatabase } from "../db";
 import { CarOffer, PriceSnapshot } from "../models/car";
-import { pricesEqual, normalizeArvalAnnouncement } from "../prices";
+import {
+  pricesEqual,
+  normalizeArvalAnnouncement,
+  normalizeArvalNewCarOffer,
+} from "../prices";
 import { fetchArvalAnnouncements } from "../sources/arval";
+import { fetchArvalNewCarOffers } from "../sources/arval-new";
 import type { PurchaseOption } from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
 
@@ -16,7 +21,7 @@ export interface CollectorRunResult {
   runs?: CollectorRunResult[];
 }
 
-const purchaseOptions: PurchaseOption[] = ["release", "sale"];
+const purchaseOptions: PurchaseOption[] = ["release", "sale", "newRelease"];
 
 export async function runCollector(
   purchaseOption: CollectorPurchaseOption = "all",
@@ -45,14 +50,19 @@ export async function runCollector(
 async function runCollectorForPurchaseOption(
   purchaseOption: PurchaseOption,
 ): Promise<CollectorRunResult> {
-  const announcements = await fetchArvalAnnouncements({ purchaseOption });
-  const normalizedOffers = announcements.map((announcement) =>
-    normalizeArvalAnnouncement(announcement, purchaseOption),
-  );
+  const normalizedOffers =
+    purchaseOption === "newRelease"
+      ? (await fetchArvalNewCarOffers()).map((offer) =>
+          normalizeArvalNewCarOffer(offer),
+        )
+      : (await fetchArvalAnnouncements({ purchaseOption })).map(
+          (announcement) =>
+            normalizeArvalAnnouncement(announcement, purchaseOption),
+        );
   const fetchedAt = new Date();
   const result: CollectorRunResult = {
     purchaseOption,
-    fetched: announcements.length,
+    fetched: normalizedOffers.length,
     offersUpserted: normalizedOffers.length,
     snapshotsCreated: 0,
     skippedUnchanged: 0,

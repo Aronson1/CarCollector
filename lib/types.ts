@@ -1,15 +1,18 @@
 export type CarSource = "arval";
 
-export type PurchaseOption = "release" | "sale";
+export type PurchaseOption = "release" | "sale" | "newRelease";
 
 export type PriceVector = number[];
 
 export interface CarDetails {
   mileage?: number;
+  annualMileage?: number;
   registrationYear?: number;
   fuelTypeLabel?: string;
   gearbox?: string;
   warrantyMonths?: number;
+  contractMonths?: number;
+  downPayment?: number;
 }
 
 export interface CarOfferView {
@@ -64,6 +67,25 @@ export interface ArvalAnnouncement {
   salePriceNet?: number | string | null;
 }
 
+export interface ArvalNewCarOffer {
+  [key: string]: unknown;
+  offerId: number | string;
+  url?: string;
+  imagePath?: string;
+  makeName?: string;
+  modelName?: string;
+  vehicleCatalogName?: string;
+  versionName?: string;
+  fuelTypeName?: string;
+  transmissionTypeName?: string;
+  updateDate?: string;
+  leasePrice?: number | string | null;
+  priceGridRental?: number | string | null;
+  downPayment?: number | string | null;
+  duration?: number | string | null;
+  mileage?: number | string | null;
+}
+
 export interface NormalizedArvalOffer {
   source: CarSource;
   purchaseOption: PurchaseOption;
@@ -79,6 +101,6 @@ export interface NormalizedArvalOffer {
   details: CarDetails;
   rawCreatedAt?: Date;
   rawUpdatedAt?: Date;
-  rawData: ArvalAnnouncement;
+  rawData: ArvalAnnouncement | ArvalNewCarOffer;
   prices: PriceVector;
 }

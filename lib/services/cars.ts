@@ -203,8 +203,7 @@ async function getHistories(
     const history = histories.get(offerId) || [];
     history.push({
       id: String(snapshot._id),
-      purchaseOption:
-        snapshot.purchaseOption === "sale" ? "sale" : "release",
+      purchaseOption: normalizePurchaseOption(snapshot.purchaseOption),
       fetchedAt: snapshot.fetchedAt.toISOString(),
       rawUpdatedAt: snapshot.rawUpdatedAt?.toISOString(),
       prices: snapshot.prices,
@@ -213,6 +212,12 @@ async function getHistories(
   }
 
   return histories;
+}
+
+function normalizePurchaseOption(value: unknown): PurchaseOption {
+  if (value === "sale") return "sale";
+  if (value === "newRelease") return "newRelease";
+  return "release";
 }
 
 function timestamp(car: CarOfferView): number {
@@ -226,18 +231,24 @@ function price(car: CarOfferView): number {
 
 function sanitizeDetails(details: {
   mileage?: number | null;
+  annualMileage?: number | null;
   registrationYear?: number | null;
   fuelTypeLabel?: string | null;
   gearbox?: string | null;
   warrantyMonths?: number | null;
+  contractMonths?: number | null;
+  downPayment?: number | null;
 } | null | undefined): CarDetails {
   if (!details) return {};
 
   return {
     mileage: details.mileage ?? undefined,
+    annualMileage: details.annualMileage ?? undefined,
     registrationYear: details.registrationYear ?? undefined,
     fuelTypeLabel: details.fuelTypeLabel ?? undefined,
     gearbox: details.gearbox ?? undefined,
     warrantyMonths: details.warrantyMonths ?? undefined,
+    contractMonths: details.contractMonths ?? undefined,
+    downPayment: details.downPayment ?? undefined,
   };
 }

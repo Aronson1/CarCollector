@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   hasPriceChanged,
   normalizeArvalAnnouncement,
+  normalizeArvalNewCarOffer,
   normalizePriceVector,
   pricesEqual,
 } from "../lib/prices.ts";
@@ -27,6 +28,19 @@ test("normalizes Arval sale price into a stable vector", () => {
       "sale",
     ),
     [109674],
+  );
+});
+
+test("normalizes Arval new rental price into a stable vector", () => {
+  assert.deepEqual(
+    normalizePriceVector(
+      {
+        leasePrice: "1249",
+        priceGridRental: 1300,
+      },
+      "newRelease",
+    ),
+    [1249],
   );
 });
 
@@ -80,4 +94,34 @@ test("maps an Arval sale announcement into a separate offer shape", () => {
   assert.equal(offer.purchaseOption, "sale");
   assert.equal(offer.externalId, "42");
   assert.deepEqual(offer.prices, [109674]);
+});
+
+test("maps an Arval new car rental offer into the internal offer shape", () => {
+  const offer = normalizeArvalNewCarOffer({
+    offerId: 26015,
+    makeName: "BYD",
+    modelName: "Seal U DM-i",
+    vehicleCatalogName: "Comfort PHEV",
+    fuelTypeName: "Hybrydowy",
+    transmissionTypeName: "Automatyczna",
+    leasePrice: 1249,
+    downPayment: 16211,
+    duration: "36",
+    mileage: "10000",
+    imagePath: "https://example.com/car.png",
+    url: "/wynajem-oferty/wynajem-dlugoterminowy-male-floty/byd/seal-u-dm-i/26015",
+    updateDate: "2026-04-24T07:07:54Z",
+  });
+
+  assert.equal(offer.source, "arval");
+  assert.equal(offer.purchaseOption, "newRelease");
+  assert.equal(offer.externalId, "26015");
+  assert.equal(offer.brand, "BYD");
+  assert.equal(offer.model, "Seal U DM-i");
+  assert.equal(offer.fullName, "BYD Seal U DM-i Comfort PHEV");
+  assert.deepEqual(offer.prices, [1249]);
+  assert.equal(offer.details.downPayment, 16211);
+  assert.equal(offer.details.contractMonths, 36);
+  assert.equal(offer.details.annualMileage, 10000);
+  assert.equal(offer.offerUrl, "https://www.arval.pl/wynajem-oferty/wynajem-dlugoterminowy-male-floty/byd/seal-u-dm-i/26015");
 });
