@@ -1,6 +1,6 @@
 import { connectToDatabase } from "../db";
 import { CarOffer, PriceSnapshot } from "../models/car";
-import { hasPriceChanged } from "../prices";
+import { getPrimaryPriceDelta, hasPriceChanged } from "../prices";
 import type {
   CarDetails,
   CarOfferView,
@@ -16,7 +16,13 @@ export interface GetCarsFilters {
   brand?: string;
   model?: string;
   changedOnly?: boolean;
-  sort?: "newest" | "oldest" | "priceAsc" | "priceDesc";
+  sort?:
+    | "newest"
+    | "oldest"
+    | "priceAsc"
+    | "priceDesc"
+    | "deltaAsc"
+    | "deltaDesc";
   page?: number;
   pageSize?: number | "all";
 }
@@ -117,6 +123,9 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
         details: sanitizeDetails(offer.details),
         latestPrices: latest?.prices || [],
         latestFetchedAt: latest?.fetchedAt,
+        priceDelta: getPrimaryPriceDelta(
+          history.map((snapshot) => snapshot.prices),
+        ),
         hasPriceChanged: hasPriceChanged(history.map((snapshot) => snapshot.prices)),
         priceHistory: history,
       } satisfies CarOfferView;
@@ -181,6 +190,14 @@ function sortCars(
       return price(right) - price(left);
     }
 
+    if (sort === "deltaAsc") {
+      return comparePriceDelta(left, right, "asc");
+    }
+
+    if (sort === "deltaDesc") {
+      return comparePriceDelta(left, right, "desc");
+    }
+
     return timestamp(right) - timestamp(left);
   });
 }
@@ -227,6 +244,21 @@ function timestamp(car: CarOfferView): number {
 function price(car: CarOfferView): number {
   const currentPrice = car.latestPrices.find((value) => value > 0);
   return currentPrice ?? Number.MAX_SAFE_INTEGER;
+}
+
+function comparePriceDelta(
+  left: CarOfferView,
+  right: CarOfferView,
+  direction: "asc" | "desc",
+): number {
+  const leftDelta = left.priceDelta?.amount;
+  const rightDelta = right.priceDelta?.amount;
+
+  if (leftDelta === undefined && rightDelta === undefined) return 0;
+  if (leftDelta === undefined) return 1;
+  if (rightDelta === undefined) return -1;
+
+  return direction === "asc" ? leftDelta - rightDelta : rightDelta - leftDelta;
 }
 
 function sanitizeDetails(details: {

@@ -4,6 +4,13 @@ export type PurchaseOption = "release" | "sale" | "newRelease";
 
 export type PriceVector = number[];
 
+export interface PriceDelta {
+  amount: number;
+  percent: number;
+  previousPrice: number;
+  latestPrice: number;
+}
+
 export interface CarDetails {
   mileage?: number;
   annualMileage?: number;
@@ -33,6 +40,7 @@ export interface CarOfferView {
   details: CarDetails;
   latestPrices: PriceVector;
   latestFetchedAt?: string;
+  priceDelta?: PriceDelta;
   hasPriceChanged: boolean;
   priceHistory: PriceSnapshotView[];
 }

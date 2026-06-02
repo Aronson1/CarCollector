@@ -450,6 +450,8 @@ export default function Home() {
               <option value="oldest">Najstarszy wpis</option>
               <option value="priceAsc">Cena rosnąco</option>
               <option value="priceDesc">Cena malejąco</option>
+              <option value="deltaAsc">Największy spadek ceny</option>
+              <option value="deltaDesc">Największy wzrost ceny</option>
             </select>
             <div className="flex gap-2">
               <button
@@ -564,11 +566,17 @@ export default function Home() {
                         <p className="mt-1 text-sm text-slate-400">
                           {car.brand} / {car.model} / ID {car.externalId}
                         </p>
-                        <dl className="mt-3 grid gap-2 text-sm text-slate-300 sm:grid-cols-5">
+                        <dl className="mt-3 grid gap-2 text-sm text-slate-300 sm:grid-cols-6">
                           <div>
                             <dt className="text-slate-500">{priceLabel}</dt>
                             <dd className="font-semibold text-white">
                               {formatPrice(car.latestPrices[0])}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-slate-500">Zmiana</dt>
+                            <dd>
+                              <PriceDeltaBadge car={car} />
                             </dd>
                           </div>
                           <div>
@@ -727,6 +735,30 @@ export default function Home() {
   );
 }
 
+function PriceDeltaBadge({ car }: { car: CarOfferView }) {
+  if (!car.priceDelta) {
+    return <span className="text-slate-500">-</span>;
+  }
+
+  const { amount, percent } = car.priceDelta;
+  const isDrop = amount < 0;
+  const isIncrease = amount > 0;
+  const className = isDrop
+    ? "bg-emerald-400/15 text-emerald-200 ring-emerald-400/30"
+    : isIncrease
+      ? "bg-red-400/15 text-red-200 ring-red-400/30"
+      : "bg-slate-700/60 text-slate-200 ring-slate-600";
+
+  return (
+    <span
+      className={`inline-flex min-h-6 items-center rounded px-2 py-1 text-xs font-semibold ring-1 ${className}`}
+      title={`Poprzednio: ${formatPrice(car.priceDelta.previousPrice)}`}
+    >
+      {formatSignedPrice(amount)} ({formatSignedPercent(percent)})
+    </span>
+  );
+}
+
 function formatPrice(value?: number) {
   if (!value) return "-";
   return new Intl.NumberFormat("pl-PL", {
@@ -734,6 +766,22 @@ function formatPrice(value?: number) {
     style: "currency",
     currency: "PLN",
   }).format(value);
+}
+
+function formatSignedPrice(value: number) {
+  const formatted = formatPrice(Math.abs(value));
+  if (value === 0) return formatted;
+  return `${value > 0 ? "+" : "-"}${formatted}`;
+}
+
+function formatSignedPercent(value: number) {
+  const formatted = new Intl.NumberFormat("pl-PL", {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+  }).format(Math.abs(value));
+
+  if (value === 0) return "0,0%";
+  return `${value > 0 ? "+" : "-"}${formatted}%`;
 }
 
 function createDefaultFilters() {
