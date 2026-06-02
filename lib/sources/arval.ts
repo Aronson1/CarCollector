@@ -51,14 +51,27 @@ async function enrichAnnouncementsWithDetails(
         announcement.id,
       );
 
-      return {
-        ...details,
-        ...announcement,
-      };
+      return mergeAnnouncementDetails(announcement, details);
     } catch {
       return announcement;
     }
   });
+}
+
+function mergeAnnouncementDetails(
+  announcement: ArvalAnnouncement,
+  details: ArvalAnnouncement,
+): ArvalAnnouncement {
+  return {
+    ...details,
+    ...announcement,
+    images:
+      details.images && details.images.length > 0
+        ? details.images
+        : announcement.images,
+    mainImage: announcement.mainImage || details.mainImage,
+    mainUrl: announcement.mainUrl || details.mainUrl,
+  };
 }
 
 async function fetchArvalAnnouncementDetails(

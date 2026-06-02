@@ -28,6 +28,7 @@ const carOfferSchema = new Schema(
     externalId: { type: String, required: true, index: true },
     offerUrl: String,
     imageUrl: String,
+    imageUrls: { type: [String], default: [] },
     fullName: { type: String, required: true },
     brand: { type: String, required: true, index: true },
     model: { type: String, required: true, index: true },
@@ -72,11 +73,42 @@ const priceSnapshotSchema = new Schema(
 
 priceSnapshotSchema.index({ offerId: 1, fetchedAt: 1 });
 
+const collectorRunSchema = new Schema(
+  {
+    purchaseOption: {
+      type: String,
+      required: true,
+      enum: ["release", "sale", "newRelease", "all"],
+      index: true,
+    },
+    status: {
+      type: String,
+      required: true,
+      enum: ["success", "error"],
+      index: true,
+    },
+    startedAt: { type: Date, required: true, index: true },
+    finishedAt: { type: Date, required: true, index: true },
+    fetched: { type: Number, default: 0 },
+    offersUpserted: { type: Number, default: 0 },
+    snapshotsCreated: { type: Number, default: 0 },
+    skippedUnchanged: { type: Number, default: 0 },
+    message: String,
+  },
+  { timestamps: true },
+);
+
+collectorRunSchema.index({ purchaseOption: 1, finishedAt: -1 });
+
 export type CarOfferDocument = InferSchemaType<typeof carOfferSchema> & {
   _id: mongoose.Types.ObjectId;
 };
 
 export type PriceSnapshotDocument = InferSchemaType<typeof priceSnapshotSchema> & {
+  _id: mongoose.Types.ObjectId;
+};
+
+export type CollectorRunDocument = InferSchemaType<typeof collectorRunSchema> & {
   _id: mongoose.Types.ObjectId;
 };
 
@@ -87,3 +119,7 @@ export const CarOffer =
 export const PriceSnapshot =
   (mongoose.models.PriceSnapshot as Model<PriceSnapshotDocument>) ||
   mongoose.model<PriceSnapshotDocument>("PriceSnapshot", priceSnapshotSchema);
+
+export const CollectorRun =
+  (mongoose.models.CollectorRun as Model<CollectorRunDocument>) ||
+  mongoose.model<CollectorRunDocument>("CollectorRun", collectorRunSchema);

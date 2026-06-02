@@ -188,7 +188,7 @@ async function enrichMissingOfferDetails(
 ): Promise<ArvalNewCarOffer[]> {
   return Promise.all(
     offers.map(async (offer) => {
-      if (hasOfferIdentity(offer) && offer.horsePower) {
+      if (hasOfferIdentity(offer) && offer.horsePower && hasMultipleImages(offer)) {
         return offer;
       }
 
@@ -272,6 +272,7 @@ function findDetailPageOffer(value: unknown): ArvalNewCarOffer | null {
     ),
     horsePower: readStringOrNumber(findSpecificationValue(specifications, "horsePower")),
     imagePath: findImagePath(offerDetail),
+    imagePaths: findImagePaths(offerDetail),
     leasePrice: readStringOrNumber(tokens?.price),
     downPayment: readStringOrNumber(tokens?.downpayment),
     duration: readStringOrNumber(tokens?.duration),
@@ -299,6 +300,7 @@ function mergeNewCarOffer(
       offer.transmissionTypeName || existing.transmissionTypeName,
     horsePower: offer.horsePower || existing.horsePower,
     imagePath: offer.imagePath || existing.imagePath,
+    imagePaths: mergeStringArrays(offer.imagePaths, existing.imagePaths),
     url: offer.url || existing.url,
     downPayment: offer.downPayment || existing.downPayment,
     duration: offer.duration || existing.duration,
@@ -306,8 +308,17 @@ function mergeNewCarOffer(
   };
 }
 
+function mergeStringArrays(left?: string[], right?: string[]): string[] | undefined {
+  const values = [...(left || []), ...(right || [])].filter(Boolean);
+  return values.length > 0 ? Array.from(new Set(values)) : undefined;
+}
+
 function hasOfferIdentity(offer: ArvalNewCarOffer): boolean {
   return Boolean(offer.makeName && offer.modelName);
+}
+
+function hasMultipleImages(offer: ArvalNewCarOffer): boolean {
+  return Boolean(offer.imagePaths && offer.imagePaths.length > 1);
 }
 
 function findStringByKey(value: unknown, key: string): string | null {
@@ -434,11 +445,17 @@ function readNestedLocalizedName(
 }
 
 function findImagePath(offerDetail: Record<string, unknown> | null): string | undefined {
+  return findImagePaths(offerDetail)[0];
+}
+
+function findImagePaths(offerDetail: Record<string, unknown> | null): string[] {
   const images = offerDetail?.images;
 
   if (!Array.isArray(images)) {
-    return undefined;
+    return [];
   }
+
+  const paths: string[] = [];
 
   for (const image of images) {
     const imageRecord = asRecord(image);
@@ -452,10 +469,10 @@ function findImagePath(offerDetail: Record<string, unknown> | null): string | un
       const path = readString(asRecord(size)?.path);
 
       if (path) {
-        return path;
+        paths.push(path);
       }
     }
   }
 
-  return undefined;
+  return Array.from(new Set(paths));
 }

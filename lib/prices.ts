@@ -95,18 +95,45 @@ export function getPrimaryPriceDelta(history: PriceVector[]): PriceDelta | undef
   };
 }
 
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  return Array.from(
+    new Set(values.filter((value): value is string => Boolean(value))),
+  );
+}
+
+function normalizeArvalAnnouncementImageUrls(
+  announcement: ArvalAnnouncement,
+): string[] {
+  const detailImages = (announcement.images || [])
+    .slice()
+    .sort((left, right) => (left.order ?? 0) - (right.order ?? 0))
+    .map((image) => image.uri);
+
+  return uniqueStrings([
+    announcement.mainImage,
+    announcement.mainUrl,
+    ...detailImages,
+  ]);
+}
+
+function normalizeArvalNewCarImageUrls(offer: ArvalNewCarOffer): string[] {
+  return uniqueStrings([offer.imagePath, ...(offer.imagePaths || [])]);
+}
+
 export function normalizeArvalAnnouncement(
   announcement: ArvalAnnouncement,
   purchaseOption: PurchaseOption = announcement.purchaseOption || "release",
 ): NormalizedArvalOffer {
   const externalId = String(announcement.id);
+  const imageUrls = normalizeArvalAnnouncementImageUrls(announcement);
 
   return {
     source: "arval",
     purchaseOption,
     externalId,
     offerUrl: announcement.offerUrl,
-    imageUrl: announcement.mainImage || announcement.mainUrl,
+    imageUrl: imageUrls[0],
+    imageUrls,
     fullName: announcement.trim || `${announcement.make || "Unknown"} ${announcement.model || ""}`.trim(),
     brand: announcement.make || "Unknown",
     model: announcement.model || "Unknown",
@@ -131,6 +158,7 @@ export function normalizeArvalNewCarOffer(
   const brand = offer.makeName || "Unknown";
   const model = offer.modelName || "Unknown";
   const catalogName = offer.vehicleCatalogName || offer.versionName;
+  const imageUrls = normalizeArvalNewCarImageUrls(offer);
 
   return {
     source: "arval",
@@ -139,7 +167,8 @@ export function normalizeArvalNewCarOffer(
     offerUrl: offer.url
       ? new URL(offer.url, "https://www.arval.pl").toString()
       : undefined,
-    imageUrl: offer.imagePath,
+    imageUrl: imageUrls[0],
+    imageUrls,
     fullName: [brand, model, catalogName].filter(Boolean).join(" "),
     brand,
     model,
