@@ -15,6 +15,7 @@ export async function GET(request: Request) {
       brand: searchParams.get("brand") || undefined,
       model: searchParams.get("model") || undefined,
       changedOnly: searchParams.get("changedOnly") === "true",
+      availableOnly: searchParams.get("availableOnly") === "true",
       sort: parseSort(searchParams.get("sort")),
       page: parsePage(searchParams.get("page")),
       pageSize: parsePageSize(searchParams.get("pageSize")),
@@ -58,7 +59,8 @@ function parseSort(value: string | null) {
     value === "priceAsc" ||
     value === "priceDesc" ||
     value === "deltaAsc" ||
-    value === "deltaDesc"
+    value === "deltaDesc" ||
+    value === "dealScoreDesc"
   ) {
     return value;
   }
