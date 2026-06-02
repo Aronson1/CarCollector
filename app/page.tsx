@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import Autocomplete from "@mui/material/Autocomplete";
 import LinearProgress from "@mui/material/LinearProgress";
 import TextField from "@mui/material/TextField";
@@ -45,7 +46,8 @@ export default function Home() {
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [previewImage, setPreviewImage] = useState<{
     alt: string;
-    src: string;
+    images: string[];
+    index: number;
   } | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [collectorState, setCollectorState] = useState<LoadState>("idle");
@@ -237,6 +239,18 @@ export default function Home() {
       if (event.key === "Escape") {
         setPreviewImage(null);
       }
+
+      if (event.key === "ArrowLeft") {
+        setPreviewImage((current) =>
+          current ? movePreviewImage(current, -1) : current,
+        );
+      }
+
+      if (event.key === "ArrowRight") {
+        setPreviewImage((current) =>
+          current ? movePreviewImage(current, 1) : current,
+        );
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown);
@@ -334,24 +348,32 @@ export default function Home() {
               Panel monitorowania cen
             </h1>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:gap-2">
-            {purchaseOptions.map((option) => (
-              <button
-                className={`min-h-12 rounded px-4 py-3 text-sm font-semibold leading-tight transition disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-10 sm:py-2 ${
-                  purchaseOption === option
-                    ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-                    : "border border-cyan-400 text-cyan-100 hover:bg-cyan-400/10"
-                }`}
-                disabled={collectorState === "loading"}
-                key={option}
-                onClick={() => runCollector(option)}
-                type="button"
-              >
-                {collectorPurchaseOption === option
-                  ? `Pobieranie ${getPurchaseOptionShortLabel(option).toLowerCase()}...`
-                  : `Pobierz ${getPurchaseOptionShortLabel(option).toLowerCase()}`}
-              </button>
-            ))}
+          <div className="flex flex-col gap-3">
+            <Link
+              className="min-h-12 rounded border border-slate-700 px-4 py-3 text-center text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100 sm:self-end"
+              href="/dashboard"
+            >
+              Dashboard trendów
+            </Link>
+            <div className="flex flex-col gap-3 sm:flex-row sm:gap-2">
+              {purchaseOptions.map((option) => (
+                <button
+                  className={`min-h-12 rounded px-4 py-3 text-sm font-semibold leading-tight transition disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-10 sm:py-2 ${
+                    purchaseOption === option
+                      ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                      : "border border-cyan-400 text-cyan-100 hover:bg-cyan-400/10"
+                  }`}
+                  disabled={collectorState === "loading"}
+                  key={option}
+                  onClick={() => runCollector(option)}
+                  type="button"
+                >
+                  {collectorPurchaseOption === option
+                    ? `Pobieranie ${getPurchaseOptionShortLabel(option).toLowerCase()}...`
+                    : `Pobierz ${getPurchaseOptionShortLabel(option).toLowerCase()}`}
+                </button>
+              ))}
+            </div>
           </div>
         </header>
 
@@ -533,6 +555,7 @@ export default function Home() {
               {cars.map((car) => {
                 const isSelected = selectedCarId === car.id;
                 const hasChart = car.priceHistory.length > 1;
+                const carImages = getCarImages(car);
 
                 return (
                   <article
@@ -541,33 +564,18 @@ export default function Home() {
                     }`}
                     key={car.id}
                   >
-                    <div className="grid gap-4 md:grid-cols-[120px_1fr_auto]">
-                      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded bg-slate-800">
-                        {car.imageUrl ? (
-                          <button
-                            aria-label={`Powiększ zdjęcie: ${car.fullName}`}
-                            className="h-full w-full cursor-zoom-in"
-                            onClick={() =>
-                              setPreviewImage({
-                                alt: car.fullName,
-                                src: car.imageUrl as string,
-                              })
-                            }
-                            type="button"
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              alt={car.fullName}
-                              className="h-full w-full object-cover transition duration-200 hover:scale-105"
-                              src={car.imageUrl}
-                            />
-                          </button>
-                        ) : (
-                          <div className="px-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
-                            Brak zdjęcia
-                          </div>
-                        )}
-                      </div>
+                    <div className="grid gap-4 md:grid-cols-[150px_1fr_auto]">
+                      <CarImageGallery
+                        car={car}
+                        images={carImages}
+                        onPreview={(index) =>
+                          setPreviewImage({
+                            alt: car.fullName,
+                            images: carImages,
+                            index,
+                          })
+                        }
+                      />
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="truncate text-base font-semibold text-white">
@@ -723,22 +731,59 @@ export default function Home() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between gap-3">
-              <p className="truncate text-sm font-semibold text-white">
-                {previewImage.alt}
-              </p>
-              <button
-                className="h-10 rounded bg-white px-4 text-sm font-semibold text-slate-950 transition hover:bg-slate-200"
-                onClick={() => setPreviewImage(null)}
-                type="button"
-              >
-                Zamknij
-              </button>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold text-white">
+                  {previewImage.alt}
+                </p>
+                {previewImage.images.length > 1 && (
+                  <p className="mt-1 text-xs text-slate-400">
+                    {previewImage.index + 1} / {previewImage.images.length}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {previewImage.images.length > 1 && (
+                  <>
+                    <button
+                      aria-label="Poprzednie zdjęcie"
+                      className="h-10 rounded border border-slate-700 px-3 text-sm font-semibold text-slate-100 transition hover:border-slate-500"
+                      onClick={() =>
+                        setPreviewImage((current) =>
+                          current ? movePreviewImage(current, -1) : current,
+                        )
+                      }
+                      type="button"
+                    >
+                      Poprzednie
+                    </button>
+                    <button
+                      aria-label="Następne zdjęcie"
+                      className="h-10 rounded border border-slate-700 px-3 text-sm font-semibold text-slate-100 transition hover:border-slate-500"
+                      onClick={() =>
+                        setPreviewImage((current) =>
+                          current ? movePreviewImage(current, 1) : current,
+                        )
+                      }
+                      type="button"
+                    >
+                      Następne
+                    </button>
+                  </>
+                )}
+                <button
+                  className="h-10 rounded bg-white px-4 text-sm font-semibold text-slate-950 transition hover:bg-slate-200"
+                  onClick={() => setPreviewImage(null)}
+                  type="button"
+                >
+                  Zamknij
+                </button>
+              </div>
             </div>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               alt={previewImage.alt}
               className="max-h-[calc(100vh-6rem)] w-full rounded object-contain"
-              src={previewImage.src}
+              src={previewImage.images[previewImage.index]}
             />
           </div>
         </div>
@@ -763,6 +808,69 @@ function AvailableBadge() {
       <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
       Dostępny
     </span>
+  );
+}
+
+function CarImageGallery({
+  car,
+  images,
+  onPreview,
+}: {
+  car: CarOfferView;
+  images: string[];
+  onPreview: (index: number) => void;
+}) {
+  if (images.length === 0) {
+    return (
+      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded bg-slate-800">
+        <div className="px-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Brak zdjęcia
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-2">
+      <button
+        aria-label={`Powiększ zdjęcie: ${car.fullName}`}
+        className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded bg-slate-800"
+        onClick={() => onPreview(0)}
+        type="button"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          alt={car.fullName}
+          className="h-full w-full object-cover transition duration-200 hover:scale-105"
+          src={images[0]}
+        />
+        {images.length > 1 && (
+          <span className="absolute bottom-1.5 right-1.5 rounded bg-slate-950/85 px-2 py-1 text-xs font-semibold text-white">
+            {images.length} zdj.
+          </span>
+        )}
+      </button>
+      {images.length > 1 && (
+        <div className="grid grid-cols-3 gap-1">
+          {images.slice(1, 4).map((image, index) => (
+            <button
+              aria-label={`Powiększ zdjęcie ${index + 2}: ${car.fullName}`}
+              className="aspect-[4/3] overflow-hidden rounded bg-slate-800 ring-1 ring-slate-700 transition hover:ring-cyan-400"
+              key={image}
+              onClick={() => onPreview(index + 1)}
+              type="button"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt=""
+                className="h-full w-full object-cover"
+                src={image}
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -848,6 +956,26 @@ function createDefaultFilters() {
     changedOnly: false,
     availableOnly: false,
     sort: "newest",
+  };
+}
+
+function getCarImages(car: CarOfferView): string[] {
+  return Array.from(
+    new Set([car.imageUrl || undefined, ...(car.imageUrls || [])].filter(Boolean)),
+  ) as string[];
+}
+
+function movePreviewImage(
+  previewImage: { alt: string; images: string[]; index: number },
+  direction: -1 | 1,
+) {
+  const nextIndex =
+    (previewImage.index + direction + previewImage.images.length) %
+    previewImage.images.length;
+
+  return {
+    ...previewImage,
+    index: nextIndex,
   };
 }
 

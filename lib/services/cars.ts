@@ -116,6 +116,7 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
         externalId: offer.externalId,
         offerUrl: offer.offerUrl || undefined,
         imageUrl: offer.imageUrl || undefined,
+        imageUrls: getImageUrls(offer.imageUrl, offer.imageUrls),
         fullName: offer.fullName,
         brand: offer.brand,
         model: offer.model,
@@ -345,4 +346,13 @@ function getRawDataPowerHp(rawData: unknown): number | undefined {
   };
 
   return normalizeArvalPowerHp(record);
+}
+
+function getImageUrls(
+  imageUrl?: string | null,
+  imageUrls?: string[] | null,
+): string[] {
+  return Array.from(
+    new Set([imageUrl || undefined, ...(imageUrls || [])].filter(Boolean)),
+  ) as string[];
 }

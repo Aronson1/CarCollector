@@ -1,5 +1,5 @@
 import { connectToDatabase } from "../db";
-import { CarOffer, PriceSnapshot } from "../models/car";
+import { CarOffer, CollectorRun, PriceSnapshot } from "../models/car";
 import {
   pricesEqual,
   normalizeArvalAnnouncement,
@@ -30,24 +30,60 @@ export async function runCollector(
   await ensurePurchaseOptionMigration();
 
   if (purchaseOption === "all") {
-    const runs = await Promise.all(
-      purchaseOptions.map((option) => runCollectorForPurchaseOption(option)),
-    );
+    const startedAt = new Date();
 
-    return {
-      purchaseOption,
-      fetched: sumRuns(runs, "fetched"),
-      offersUpserted: sumRuns(runs, "offersUpserted"),
-      snapshotsCreated: sumRuns(runs, "snapshotsCreated"),
-      skippedUnchanged: sumRuns(runs, "skippedUnchanged"),
-      runs,
-    };
+    try {
+      const runs = await Promise.all(
+        purchaseOptions.map((option) => runCollectorForPurchaseOption(option)),
+      );
+      const result = {
+        purchaseOption,
+        fetched: sumRuns(runs, "fetched"),
+        offersUpserted: sumRuns(runs, "offersUpserted"),
+        snapshotsCreated: sumRuns(runs, "snapshotsCreated"),
+        skippedUnchanged: sumRuns(runs, "skippedUnchanged"),
+        runs,
+      };
+
+      await recordCollectorRun(startedAt, result, "success");
+      return result;
+    } catch (error) {
+      await recordCollectorRun(startedAt, {
+        purchaseOption,
+        fetched: 0,
+        offersUpserted: 0,
+        snapshotsCreated: 0,
+        skippedUnchanged: 0,
+      }, "error", error instanceof Error ? error.message : "Collector run failed.");
+      throw error;
+    }
   }
 
   return runCollectorForPurchaseOption(purchaseOption);
 }
 
 async function runCollectorForPurchaseOption(
+  purchaseOption: PurchaseOption,
+): Promise<CollectorRunResult> {
+  const startedAt = new Date();
+
+  try {
+    const result = await collectPurchaseOption(purchaseOption);
+    await recordCollectorRun(startedAt, result, "success");
+    return result;
+  } catch (error) {
+    await recordCollectorRun(startedAt, {
+      purchaseOption,
+      fetched: 0,
+      offersUpserted: 0,
+      snapshotsCreated: 0,
+      skippedUnchanged: 0,
+    }, "error", error instanceof Error ? error.message : "Collector run failed.");
+    throw error;
+  }
+}
+
+async function collectPurchaseOption(
   purchaseOption: PurchaseOption,
 ): Promise<CollectorRunResult> {
   const normalizedOffers =
@@ -85,6 +121,7 @@ async function runCollectorForPurchaseOption(
             purchaseOption: normalized.purchaseOption,
             offerUrl: normalized.offerUrl,
             imageUrl: normalized.imageUrl,
+            imageUrls: normalized.imageUrls,
             fullName: normalized.fullName,
             brand: normalized.brand,
             model: normalized.model,
@@ -183,6 +220,25 @@ async function runCollectorForPurchaseOption(
   }
 
   return result;
+}
+
+async function recordCollectorRun(
+  startedAt: Date,
+  result: CollectorRunResult,
+  status: "success" | "error",
+  message?: string,
+) {
+  await CollectorRun.create({
+    purchaseOption: result.purchaseOption,
+    status,
+    startedAt,
+    finishedAt: new Date(),
+    fetched: result.fetched,
+    offersUpserted: result.offersUpserted,
+    snapshotsCreated: result.snapshotsCreated,
+    skippedUnchanged: result.skippedUnchanged,
+    message,
+  });
 }
 
 function sumRuns(

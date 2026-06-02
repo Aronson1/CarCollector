@@ -42,6 +42,7 @@ export interface CarOfferView {
   externalId: string;
   offerUrl?: string;
   imageUrl?: string;
+  imageUrls: string[];
   fullName: string;
   brand: string;
   model: string;
@@ -74,6 +75,10 @@ export interface ArvalAnnouncement {
   offerUrl?: string;
   mainImage?: string;
   mainUrl?: string;
+  images?: Array<{
+    uri?: string;
+    order?: number;
+  }>;
   trim?: string;
   make?: string;
   model?: string;
@@ -98,6 +103,7 @@ export interface ArvalNewCarOffer {
   offerId: number | string;
   url?: string;
   imagePath?: string;
+  imagePaths?: string[];
   makeName?: string;
   modelName?: string;
   vehicleCatalogName?: string;
@@ -120,6 +126,7 @@ export interface NormalizedArvalOffer {
   externalId: string;
   offerUrl?: string;
   imageUrl?: string;
+  imageUrls: string[];
   fullName: string;
   brand: string;
   model: string;
