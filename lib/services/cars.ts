@@ -2,7 +2,7 @@ import { connectToDatabase } from "../db";
 import { applyDealScores } from "../deals";
 import { CarOffer, PriceSnapshot } from "../models/car";
 import { parsePowerHp } from "../power";
-import { getPrimaryPriceDelta, hasPriceChanged } from "../prices";
+import { getPrimaryPriceDelta, hasPriceChanged, normalizeArvalPowerHp } from "../prices";
 import type {
   CarDetails,
   CarOfferView,
@@ -124,7 +124,7 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
         labelCode: offer.labelCode || undefined,
         announcementCreatedAt: offer.rawCreatedAt?.toISOString(),
         announcementUpdatedAt: offer.rawUpdatedAt?.toISOString(),
-        details: sanitizeDetails(offer.details, offer.fullName),
+        details: sanitizeDetails(offer.details, offer.fullName, offer.rawData),
         latestPrices: latest?.prices || [],
         latestFetchedAt: latest?.fetchedAt,
         priceDelta: getPrimaryPriceDelta(
@@ -310,12 +310,13 @@ function sanitizeDetails(details: {
   contractMonths?: number | null;
   downPayment?: number | null;
   powerHp?: number | null;
-} | null | undefined, fullName?: string): CarDetails {
+} | null | undefined, fullName?: string, rawData?: unknown): CarDetails {
   const parsedPowerHp = parsePowerHp(fullName);
+  const rawDataPowerHp = getRawDataPowerHp(rawData);
 
   if (!details) {
     return {
-      powerHp: parsedPowerHp,
+      powerHp: rawDataPowerHp ?? parsedPowerHp,
     };
   }
 
@@ -328,6 +329,20 @@ function sanitizeDetails(details: {
     warrantyMonths: details.warrantyMonths ?? undefined,
     contractMonths: details.contractMonths ?? undefined,
     downPayment: details.downPayment ?? undefined,
-    powerHp: details.powerHp ?? parsedPowerHp,
+    powerHp: rawDataPowerHp ?? details.powerHp ?? parsedPowerHp,
   };
+}
+
+function getRawDataPowerHp(rawData: unknown): number | undefined {
+  if (!rawData || typeof rawData !== "object") {
+    return undefined;
+  }
+
+  const record = rawData as {
+    horsePower?: number | string | null;
+    power?: number | string | null;
+    trim?: string;
+  };
+
+  return normalizeArvalPowerHp(record);
 }

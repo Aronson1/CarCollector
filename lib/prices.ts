@@ -13,6 +13,33 @@ export function toFinitePrice(value: unknown): number {
   return Number.isFinite(price) ? price : 0;
 }
 
+function toPositiveNumber(value: unknown): number | undefined {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : undefined;
+}
+
+function kilowattsToHorsePower(value: number): number {
+  return Math.round(value * 1.359621617);
+}
+
+export function normalizeArvalPowerHp(
+  announcement: Pick<ArvalAnnouncement, "horsePower" | "power" | "trim">,
+): number | undefined {
+  const horsePower = toPositiveNumber(announcement.horsePower);
+
+  if (horsePower) {
+    return Math.round(horsePower);
+  }
+
+  const kilowatts = toPositiveNumber(announcement.power);
+
+  if (kilowatts) {
+    return kilowattsToHorsePower(kilowatts);
+  }
+
+  return parsePowerHp(announcement.trim);
+}
+
 export function normalizePriceVector(
   announcement: Pick<
     ArvalAnnouncement,
@@ -88,7 +115,7 @@ export function normalizeArvalAnnouncement(
     labelCode: announcement.labelCode,
     details: {
       ...(announcement.details || {}),
-      powerHp: parsePowerHp(announcement.trim),
+      powerHp: normalizeArvalPowerHp(announcement),
     },
     rawCreatedAt: announcement.createdAt ? new Date(announcement.createdAt) : undefined,
     rawUpdatedAt: announcement.updatedAt ? new Date(announcement.updatedAt) : undefined,
@@ -122,7 +149,7 @@ export function normalizeArvalNewCarOffer(
       downPayment: toFinitePrice(offer.downPayment) || undefined,
       fuelTypeLabel: offer.fuelTypeName,
       gearbox: offer.transmissionTypeName,
-      powerHp: parsePowerHp(
+      powerHp: toPositiveNumber(offer.horsePower) ?? parsePowerHp(
         [offer.vehicleCatalogName, offer.versionName].filter(Boolean).join(" "),
       ),
     },
