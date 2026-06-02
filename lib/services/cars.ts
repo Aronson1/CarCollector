@@ -1,5 +1,7 @@
 import { connectToDatabase } from "../db";
+import { applyDealScores } from "../deals";
 import { CarOffer, PriceSnapshot } from "../models/car";
+import { parsePowerHp } from "../power";
 import { getPrimaryPriceDelta, hasPriceChanged } from "../prices";
 import type {
   CarDetails,
@@ -16,13 +18,15 @@ export interface GetCarsFilters {
   brand?: string;
   model?: string;
   changedOnly?: boolean;
+  availableOnly?: boolean;
   sort?:
     | "newest"
     | "oldest"
     | "priceAsc"
     | "priceDesc"
     | "deltaAsc"
-    | "deltaDesc";
+    | "deltaDesc"
+    | "dealScoreDesc";
   page?: number;
   pageSize?: number | "all";
 }
@@ -120,21 +124,25 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
         labelCode: offer.labelCode || undefined,
         announcementCreatedAt: offer.rawCreatedAt?.toISOString(),
         announcementUpdatedAt: offer.rawUpdatedAt?.toISOString(),
-        details: sanitizeDetails(offer.details),
+        details: sanitizeDetails(offer.details, offer.fullName),
         latestPrices: latest?.prices || [],
         latestFetchedAt: latest?.fetchedAt,
         priceDelta: getPrimaryPriceDelta(
           history.map((snapshot) => snapshot.prices),
         ),
+        isAvailable: isOfferAvailable(offer.rawData),
         hasPriceChanged: hasPriceChanged(history.map((snapshot) => snapshot.prices)),
         priceHistory: history,
       } satisfies CarOfferView;
     });
 
-  const filteredViews = filters.changedOnly
-    ? views.filter((view) => view.hasPriceChanged)
-    : views;
-  const sortedViews = sortCars(filteredViews, filters.sort || "newest");
+  const filteredViews = views.filter((view) => {
+    if (filters.changedOnly && !view.hasPriceChanged) return false;
+    if (filters.availableOnly && !view.isAvailable) return false;
+    return true;
+  });
+  const scoredViews = applyDealScores(filteredViews);
+  const sortedViews = sortCars(scoredViews, filters.sort || "newest");
   const total = sortedViews.length;
   const pageSize = filters.pageSize || 30;
 
@@ -198,6 +206,10 @@ function sortCars(
       return comparePriceDelta(left, right, "desc");
     }
 
+    if (sort === "dealScoreDesc") {
+      return dealScore(right) - dealScore(left);
+    }
+
     return timestamp(right) - timestamp(left);
   });
 }
@@ -246,6 +258,10 @@ function price(car: CarOfferView): number {
   return currentPrice ?? Number.MAX_SAFE_INTEGER;
 }
 
+function dealScore(car: CarOfferView): number {
+  return car.dealScore?.score ?? 0;
+}
+
 function comparePriceDelta(
   left: CarOfferView,
   right: CarOfferView,
@@ -261,6 +277,29 @@ function comparePriceDelta(
   return direction === "asc" ? leftDelta - rightDelta : rightDelta - leftDelta;
 }
 
+function isOfferAvailable(rawData: unknown): boolean {
+  if (!rawData || typeof rawData !== "object") {
+    return false;
+  }
+
+  const record = rawData as {
+    reservationLabelCode?: unknown;
+    status?: unknown;
+  };
+
+  if (
+    typeof record.reservationLabelCode === "string" &&
+    record.reservationLabelCode.toLowerCase() === "available"
+  ) {
+    return true;
+  }
+
+  return (
+    typeof record.status === "string" &&
+    record.status.toLowerCase() === "published"
+  );
+}
+
 function sanitizeDetails(details: {
   mileage?: number | null;
   annualMileage?: number | null;
@@ -270,8 +309,15 @@ function sanitizeDetails(details: {
   warrantyMonths?: number | null;
   contractMonths?: number | null;
   downPayment?: number | null;
-} | null | undefined): CarDetails {
-  if (!details) return {};
+  powerHp?: number | null;
+} | null | undefined, fullName?: string): CarDetails {
+  const parsedPowerHp = parsePowerHp(fullName);
+
+  if (!details) {
+    return {
+      powerHp: parsedPowerHp,
+    };
+  }
 
   return {
     mileage: details.mileage ?? undefined,
@@ -282,5 +328,6 @@ function sanitizeDetails(details: {
     warrantyMonths: details.warrantyMonths ?? undefined,
     contractMonths: details.contractMonths ?? undefined,
     downPayment: details.downPayment ?? undefined,
+    powerHp: details.powerHp ?? parsedPowerHp,
   };
 }

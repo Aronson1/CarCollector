@@ -87,6 +87,7 @@ export default function Home() {
     if (nextFilters.brand) params.set("brand", nextFilters.brand);
     if (nextFilters.model) params.set("model", nextFilters.model);
     if (nextFilters.changedOnly) params.set("changedOnly", "true");
+    if (nextFilters.availableOnly) params.set("availableOnly", "true");
     params.set("sort", nextFilters.sort);
     params.set("page", String(nextPage));
     params.set("pageSize", nextPageSize);
@@ -372,7 +373,7 @@ export default function Home() {
             ))}
           </div>
 
-          <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto_auto_auto]">
+          <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto_auto_auto_auto]">
             <input
               className="h-10 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400"
               onChange={(event) =>
@@ -435,6 +436,20 @@ export default function Home() {
               />
               Zmiany ceny
             </label>
+            <label className="flex h-10 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200">
+              <input
+                checked={filters.availableOnly}
+                className="h-4 w-4 accent-emerald-400"
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    availableOnly: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              Dostępne
+            </label>
             <select
               aria-label="Sortowanie"
               className="h-10 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400"
@@ -452,6 +467,7 @@ export default function Home() {
               <option value="priceDesc">Cena malejąco</option>
               <option value="deltaAsc">Największy spadek ceny</option>
               <option value="deltaDesc">Największy wzrost ceny</option>
+              <option value="dealScoreDesc">Najlepsze okazje</option>
             </select>
             <div className="flex gap-2">
               <button
@@ -557,6 +573,8 @@ export default function Home() {
                           <h3 className="truncate text-base font-semibold text-white">
                             {car.fullName}
                           </h3>
+                          {car.isAvailable && <AvailableBadge />}
+                          <DealScoreBadge car={car} />
                           {car.hasPriceChanged && (
                             <span className="rounded bg-amber-300 px-2 py-1 text-xs font-semibold text-slate-950">
                               cena zmieniona
@@ -566,12 +584,16 @@ export default function Home() {
                         <p className="mt-1 text-sm text-slate-400">
                           {car.brand} / {car.model} / ID {car.externalId}
                         </p>
-                        <dl className="mt-3 grid gap-2 text-sm text-slate-300 sm:grid-cols-6">
+                        <dl className="mt-3 grid gap-2 text-sm text-slate-300 sm:grid-cols-7">
                           <div>
                             <dt className="text-slate-500">{priceLabel}</dt>
                             <dd className="font-semibold text-white">
                               {formatPrice(car.latestPrices[0])}
                             </dd>
+                          </div>
+                          <div>
+                            <dt className="text-slate-500">Moc</dt>
+                            <dd>{formatPowerHp(car.details.powerHp)}</dd>
                           </div>
                           <div>
                             <dt className="text-slate-500">Zmiana</dt>
@@ -735,6 +757,40 @@ export default function Home() {
   );
 }
 
+function AvailableBadge() {
+  return (
+    <span className="inline-flex min-h-6 items-center gap-1.5 rounded bg-emerald-400/10 px-2 py-1 text-xs font-semibold text-emerald-100 ring-1 ring-emerald-400/30">
+      <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+      Dostępny
+    </span>
+  );
+}
+
+function DealScoreBadge({ car }: { car: CarOfferView }) {
+  if (!car.dealScore) {
+    return null;
+  }
+
+  const score = car.dealScore.score;
+  const className =
+    score >= 80
+      ? "bg-emerald-400/15 text-emerald-100 ring-emerald-400/30"
+      : score >= 65
+        ? "bg-cyan-400/15 text-cyan-100 ring-cyan-400/30"
+        : score >= 50
+          ? "bg-amber-300/15 text-amber-100 ring-amber-300/30"
+          : "bg-slate-700/60 text-slate-200 ring-slate-600";
+
+  return (
+    <span
+      className={`inline-flex min-h-6 items-center rounded px-2 py-1 text-xs font-semibold ring-1 ${className}`}
+      title={car.dealScore.reasons.join(", ")}
+    >
+      Okazja {score}/100
+    </span>
+  );
+}
+
 function PriceDeltaBadge({ car }: { car: CarOfferView }) {
   if (!car.priceDelta) {
     return <span className="text-slate-500">-</span>;
@@ -790,6 +846,7 @@ function createDefaultFilters() {
     brand: "",
     model: "",
     changedOnly: false,
+    availableOnly: false,
     sort: "newest",
   };
 }
@@ -815,6 +872,11 @@ function getPriceLabel(purchaseOption: PurchaseOption) {
 function formatMileage(value?: number) {
   if (!value) return "-";
   return `${new Intl.NumberFormat("pl-PL").format(value)} km`;
+}
+
+function formatPowerHp(value?: number) {
+  if (!value) return "-";
+  return `${new Intl.NumberFormat("pl-PL").format(value)} KM`;
 }
 
 function formatYear(value?: number) {

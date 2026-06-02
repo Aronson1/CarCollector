@@ -11,6 +11,18 @@ export interface PriceDelta {
   latestPrice: number;
 }
 
+export interface DealScore {
+  score: number;
+  reasons: string[];
+  factors: {
+    price: number;
+    year: number;
+    mileage: number;
+    trend: number;
+    power: number;
+  };
+}
+
 export interface CarDetails {
   mileage?: number;
   annualMileage?: number;
@@ -20,6 +32,7 @@ export interface CarDetails {
   warrantyMonths?: number;
   contractMonths?: number;
   downPayment?: number;
+  powerHp?: number;
 }
 
 export interface CarOfferView {
@@ -41,6 +54,8 @@ export interface CarOfferView {
   latestPrices: PriceVector;
   latestFetchedAt?: string;
   priceDelta?: PriceDelta;
+  dealScore?: DealScore;
+  isAvailable: boolean;
   hasPriceChanged: boolean;
   priceHistory: PriceSnapshotView[];
 }
@@ -67,6 +82,7 @@ export interface ArvalAnnouncement {
   firstRegistrationDate?: string;
   registrationNumber?: string;
   labelCode?: string;
+  reservationLabelCode?: string | null;
   details?: CarDetails;
   purchaseOption?: PurchaseOption;
   reLeasePriceNet?: number | string | null;
@@ -87,6 +103,7 @@ export interface ArvalNewCarOffer {
   fuelTypeName?: string;
   transmissionTypeName?: string;
   updateDate?: string;
+  status?: string | null;
   leasePrice?: number | string | null;
   priceGridRental?: number | string | null;
   downPayment?: number | string | null;

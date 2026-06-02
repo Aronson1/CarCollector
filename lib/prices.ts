@@ -6,6 +6,7 @@ import type {
   PriceVector,
   PurchaseOption,
 } from "./types";
+import { parsePowerHp } from "./power.ts";
 
 export function toFinitePrice(value: unknown): number {
   const price = Number(value);
@@ -85,7 +86,10 @@ export function normalizeArvalAnnouncement(
     firstRegistrationDate: announcement.firstRegistrationDate,
     registrationNumber: announcement.registrationNumber,
     labelCode: announcement.labelCode,
-    details: announcement.details || {},
+    details: {
+      ...(announcement.details || {}),
+      powerHp: parsePowerHp(announcement.trim),
+    },
     rawCreatedAt: announcement.createdAt ? new Date(announcement.createdAt) : undefined,
     rawUpdatedAt: announcement.updatedAt ? new Date(announcement.updatedAt) : undefined,
     rawData: announcement,
@@ -118,6 +122,9 @@ export function normalizeArvalNewCarOffer(
       downPayment: toFinitePrice(offer.downPayment) || undefined,
       fuelTypeLabel: offer.fuelTypeName,
       gearbox: offer.transmissionTypeName,
+      powerHp: parsePowerHp(
+        [offer.vehicleCatalogName, offer.versionName].filter(Boolean).join(" "),
+      ),
     },
     rawUpdatedAt: offer.updateDate ? new Date(offer.updateDate) : undefined,
     rawData: offer,
