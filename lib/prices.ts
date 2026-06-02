@@ -149,7 +149,7 @@ export function normalizeArvalNewCarOffer(
       downPayment: toFinitePrice(offer.downPayment) || undefined,
       fuelTypeLabel: offer.fuelTypeName,
       gearbox: offer.transmissionTypeName,
-      powerHp: parsePowerHp(
+      powerHp: toPositiveNumber(offer.horsePower) ?? parsePowerHp(
         [offer.vehicleCatalogName, offer.versionName].filter(Boolean).join(" "),
       ),
     },

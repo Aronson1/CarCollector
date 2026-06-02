@@ -188,7 +188,7 @@ async function enrichMissingOfferDetails(
 ): Promise<ArvalNewCarOffer[]> {
   return Promise.all(
     offers.map(async (offer) => {
-      if (hasOfferIdentity(offer)) {
+      if (hasOfferIdentity(offer) && offer.horsePower) {
         return offer;
       }
 
@@ -270,6 +270,7 @@ function findDetailPageOffer(value: unknown): ArvalNewCarOffer | null {
       specifications,
       "transmissionTypeName",
     ),
+    horsePower: readStringOrNumber(findSpecificationValue(specifications, "horsePower")),
     imagePath: findImagePath(offerDetail),
     leasePrice: readStringOrNumber(tokens?.price),
     downPayment: readStringOrNumber(tokens?.downpayment),
@@ -296,6 +297,7 @@ function mergeNewCarOffer(
     fuelTypeName: offer.fuelTypeName || existing.fuelTypeName,
     transmissionTypeName:
       offer.transmissionTypeName || existing.transmissionTypeName,
+    horsePower: offer.horsePower || existing.horsePower,
     imagePath: offer.imagePath || existing.imagePath,
     url: offer.url || existing.url,
     downPayment: offer.downPayment || existing.downPayment,

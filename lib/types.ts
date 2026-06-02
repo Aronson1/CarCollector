@@ -106,6 +106,7 @@ export interface ArvalNewCarOffer {
   transmissionTypeName?: string;
   updateDate?: string;
   status?: string | null;
+  horsePower?: number | string | null;
   leasePrice?: number | string | null;
   priceGridRental?: number | string | null;
   downPayment?: number | string | null;

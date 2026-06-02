@@ -146,6 +146,7 @@ test("maps an Arval new car rental offer into the internal offer shape", () => {
     downPayment: 16211,
     duration: "36",
     mileage: "10000",
+    horsePower: "160",
     imagePath: "https://example.com/car.png",
     url: "/wynajem-oferty/wynajem-dlugoterminowy-male-floty/byd/seal-u-dm-i/26015",
     updateDate: "2026-04-24T07:07:54Z",
@@ -161,5 +162,6 @@ test("maps an Arval new car rental offer into the internal offer shape", () => {
   assert.equal(offer.details.downPayment, 16211);
   assert.equal(offer.details.contractMonths, 36);
   assert.equal(offer.details.annualMileage, 10000);
+  assert.equal(offer.details.powerHp, 160);
   assert.equal(offer.offerUrl, "https://www.arval.pl/wynajem-oferty/wynajem-dlugoterminowy-male-floty/byd/seal-u-dm-i/26015");
 });

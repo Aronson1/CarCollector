@@ -10,6 +10,7 @@ const carDetailsSchema = new Schema(
     warrantyMonths: Number,
     contractMonths: Number,
     downPayment: Number,
+    powerHp: Number,
   },
   { _id: false },
 );
