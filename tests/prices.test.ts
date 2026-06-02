@@ -78,14 +78,41 @@ test("maps an Arval announcement into the internal offer shape", () => {
     reLeasePriceNet: 2300,
     reLeasePrice2Net: 2400,
     reLeasePrice3Net: 0,
+    horsePower: 163,
   });
 
   assert.equal(offer.source, "arval");
   assert.equal(offer.purchaseOption, "release");
   assert.equal(offer.externalId, "42");
   assert.equal(offer.fullName, "Volvo XC60 Momentum");
+  assert.equal(offer.details.powerHp, 163);
   assert.deepEqual(offer.prices, [2300, 2400, 0]);
   assert.equal(offer.rawUpdatedAt?.toISOString(), "2025-04-10T09:00:00.000Z");
+});
+
+test("uses Arval kilowatt power when horsepower is missing", () => {
+  const offer = normalizeArvalAnnouncement({
+    id: 43,
+    trim: "Volvo XC40 B3 P Mild Hybrid Plus Dark 5d",
+    make: "Volvo",
+    model: "XC40",
+    power: 120,
+    reLeasePriceNet: 2013,
+  });
+
+  assert.equal(offer.details.powerHp, 163);
+});
+
+test("falls back to parsing power from trim when Arval power fields are missing", () => {
+  const offer = normalizeArvalAnnouncement({
+    id: 44,
+    trim: "Skoda Octavia 2.0 TDI SCR 110kW DSG Style 5d",
+    make: "Skoda",
+    model: "Octavia",
+    reLeasePriceNet: 1800,
+  });
+
+  assert.equal(offer.details.powerHp, 150);
 });
 
 test("maps an Arval sale announcement into a separate offer shape", () => {

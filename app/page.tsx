@@ -324,8 +324,8 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 py-6 lg:px-8">
-        <header className="flex flex-col gap-4 border-b border-slate-800 pb-5 lg:flex-row lg:items-end lg:justify-between">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-7 px-5 py-7 lg:gap-6 lg:px-8">
+        <header className="flex flex-col gap-5 border-b border-slate-800 pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-medium uppercase tracking-wide text-cyan-300">
               Car Collector
@@ -334,10 +334,10 @@ export default function Home() {
               Panel monitorowania cen
             </h1>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-3 sm:flex-row sm:gap-2">
             {purchaseOptions.map((option) => (
               <button
-                className={`h-10 rounded px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`min-h-12 rounded px-4 py-3 text-sm font-semibold leading-tight transition disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-10 sm:py-2 ${
                   purchaseOption === option
                     ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
                     : "border border-cyan-400 text-cyan-100 hover:bg-cyan-400/10"
@@ -355,11 +355,11 @@ export default function Home() {
           </div>
         </header>
 
-        <section className="flex flex-col gap-3 border-b border-slate-800 pb-5">
-          <div className="inline-flex w-fit rounded border border-slate-700 bg-slate-900 p-1">
+        <section className="flex flex-col gap-4 border-b border-slate-800 pb-6 lg:gap-3 lg:pb-5">
+          <div className="grid w-full grid-cols-3 gap-1 rounded border border-slate-700 bg-slate-900 p-1 sm:inline-grid sm:w-fit">
             {purchaseOptions.map((option) => (
               <button
-                className={`h-9 rounded px-4 text-sm font-semibold transition ${
+                className={`min-h-12 rounded px-2 py-2 text-center text-sm font-semibold leading-tight transition sm:min-h-9 sm:px-4 ${
                   purchaseOption === option
                     ? "bg-cyan-400 text-slate-950"
                     : "text-slate-300 hover:bg-slate-800"
@@ -373,9 +373,9 @@ export default function Home() {
             ))}
           </div>
 
-          <div className="grid gap-3 md:grid-cols-[1fr_1fr_1fr_auto_auto_auto_auto]">
+          <div className="grid gap-x-3 gap-y-4 md:grid-cols-[1fr_1fr_1fr_auto_auto_auto_auto]">
             <input
-              className="h-10 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400"
+              className="h-12 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400 sm:h-10"
               onChange={(event) =>
                 setFilters((current) => ({
                   ...current,
@@ -422,7 +422,7 @@ export default function Home() {
               slotProps={autocompleteSlotProps}
               value={filters.model || null}
             />
-            <label className="flex h-10 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200">
+            <label className="flex min-h-12 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-slate-200 sm:min-h-10 sm:py-2">
               <input
                 checked={filters.changedOnly}
                 className="h-4 w-4 accent-cyan-400"
@@ -436,7 +436,7 @@ export default function Home() {
               />
               Zmiany ceny
             </label>
-            <label className="flex h-10 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200">
+            <label className="flex min-h-12 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-slate-200 sm:min-h-10 sm:py-2">
               <input
                 checked={filters.availableOnly}
                 className="h-4 w-4 accent-emerald-400"
@@ -452,7 +452,7 @@ export default function Home() {
             </label>
             <select
               aria-label="Sortowanie"
-              className="h-10 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400"
+              className="h-12 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400 sm:h-10"
               onChange={(event) =>
                 setFilters((current) => ({
                   ...current,
@@ -469,16 +469,16 @@ export default function Home() {
               <option value="deltaDesc">Największy wzrost ceny</option>
               <option value="dealScoreDesc">Najlepsze okazje</option>
             </select>
-            <div className="flex gap-2">
+            <div className="flex gap-3 pt-1 sm:gap-2 sm:pt-0">
               <button
-                className="h-10 rounded bg-white px-4 text-sm font-semibold text-slate-950 transition hover:bg-slate-200"
+                className="min-h-12 rounded bg-white px-5 py-3 text-sm font-semibold leading-tight text-slate-950 transition hover:bg-slate-200 sm:min-h-10 sm:px-4 sm:py-2"
                 onClick={() => loadCars(filters, 1, pagination.pageSize)}
                 type="button"
               >
                 Filtruj
               </button>
               <button
-                className="h-10 rounded border border-slate-700 px-4 text-sm font-semibold text-slate-100 transition hover:border-slate-500"
+                className="min-h-12 rounded border border-slate-700 px-5 py-3 text-sm font-semibold leading-tight text-slate-100 transition hover:border-slate-500 sm:min-h-10 sm:px-4 sm:py-2"
                 onClick={resetFilters}
                 type="button"
               >
@@ -925,7 +925,12 @@ const autocompleteSx = {
   "& .MuiInputBase-root": {
     backgroundColor: "#0f172a",
     color: "#fff",
-    height: "40px",
+    height: "48px",
+    minHeight: "48px",
+    "@media (min-width: 640px)": {
+      height: "40px",
+      minHeight: "40px",
+    },
   },
   "& .MuiInputLabel-root": {
     color: "#94a3b8",

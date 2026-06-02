@@ -89,6 +89,8 @@ export interface ArvalAnnouncement {
   reLeasePrice2Net?: number | string | null;
   reLeasePrice3Net?: number | string | null;
   salePriceNet?: number | string | null;
+  power?: number | string | null;
+  horsePower?: number | string | null;
 }
 
 export interface ArvalNewCarOffer {
