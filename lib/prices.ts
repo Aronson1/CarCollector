@@ -2,6 +2,7 @@ import type {
   ArvalAnnouncement,
   ArvalNewCarOffer,
   NormalizedArvalOffer,
+  PriceDelta,
   PriceVector,
   PurchaseOption,
 } from "./types";
@@ -43,6 +44,27 @@ export function pricesEqual(left: PriceVector, right: PriceVector): boolean {
 export function hasPriceChanged(history: PriceVector[]): boolean {
   const uniquePrices = new Set(history.flatMap((prices) => prices.filter((price) => price > 0)));
   return uniquePrices.size > 1;
+}
+
+export function getPrimaryPriceDelta(history: PriceVector[]): PriceDelta | undefined {
+  const prices = history
+    .map((snapshot) => snapshot[0])
+    .filter((price): price is number => Number.isFinite(price) && price > 0);
+
+  if (prices.length < 2) {
+    return undefined;
+  }
+
+  const latestPrice = prices.at(-1) as number;
+  const previousPrice = prices.at(-2) as number;
+  const amount = latestPrice - previousPrice;
+
+  return {
+    amount,
+    percent: previousPrice > 0 ? (amount / previousPrice) * 100 : 0,
+    previousPrice,
+    latestPrice,
+  };
 }
 
 export function normalizeArvalAnnouncement(

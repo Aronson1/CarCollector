@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getPrimaryPriceDelta,
   hasPriceChanged,
   normalizeArvalAnnouncement,
   normalizeArvalNewCarOffer,
@@ -52,6 +53,16 @@ test("detects identical price vectors for snapshot deduplication", () => {
 test("detects meaningful price changes while ignoring zero placeholders", () => {
   assert.equal(hasPriceChanged([[0, 0, 0], [1200, 0, 0], [1200, 0, 0]]), false);
   assert.equal(hasPriceChanged([[1200, 0, 0], [1250, 0, 0]]), true);
+});
+
+test("calculates primary price delta from the latest two non-zero snapshots", () => {
+  assert.deepEqual(getPrimaryPriceDelta([[0], [1200], [1100]]), {
+    amount: -100,
+    percent: -8.333333333333332,
+    previousPrice: 1200,
+    latestPrice: 1100,
+  });
+  assert.equal(getPrimaryPriceDelta([[0], [1400]]), undefined);
 });
 
 test("maps an Arval announcement into the internal offer shape", () => {

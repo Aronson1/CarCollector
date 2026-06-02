@@ -56,7 +56,9 @@ function parseSort(value: string | null) {
     value === "newest" ||
     value === "oldest" ||
     value === "priceAsc" ||
-    value === "priceDesc"
+    value === "priceDesc" ||
+    value === "deltaAsc" ||
+    value === "deltaDesc"
   ) {
     return value;
   }
