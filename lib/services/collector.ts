@@ -210,9 +210,13 @@ async function collectPurchaseOption(
       ? (await fetchArvalNewCarOffers()).map((offer) =>
           normalizeArvalNewCarOffer(offer),
         )
-      : (await fetchArvalAnnouncements({ purchaseOption })).map(
-          (announcement) =>
-            normalizeArvalAnnouncement(announcement, purchaseOption),
+      : (
+          await fetchArvalAnnouncements({
+            includeDetails: false,
+            purchaseOption,
+          })
+        ).map((announcement) =>
+          normalizeArvalAnnouncement(announcement, purchaseOption),
         );
   const fetchedAt = new Date();
   const result: CollectorRunResult = {
