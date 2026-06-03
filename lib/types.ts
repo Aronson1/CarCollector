@@ -4,6 +4,25 @@ export type PurchaseOption = "release" | "sale" | "newRelease";
 
 export type PriceVector = number[];
 
+export interface PriceDelta {
+  amount: number;
+  percent: number;
+  previousPrice: number;
+  latestPrice: number;
+}
+
+export interface DealScore {
+  score: number;
+  reasons: string[];
+  factors: {
+    price: number;
+    year: number;
+    mileage: number;
+    trend: number;
+    power: number;
+  };
+}
+
 export interface CarDetails {
   mileage?: number;
   annualMileage?: number;
@@ -13,6 +32,7 @@ export interface CarDetails {
   warrantyMonths?: number;
   contractMonths?: number;
   downPayment?: number;
+  powerHp?: number;
 }
 
 export interface CarOfferView {
@@ -22,6 +42,7 @@ export interface CarOfferView {
   externalId: string;
   offerUrl?: string;
   imageUrl?: string;
+  imageUrls: string[];
   fullName: string;
   brand: string;
   model: string;
@@ -33,7 +54,11 @@ export interface CarOfferView {
   details: CarDetails;
   latestPrices: PriceVector;
   latestFetchedAt?: string;
+  priceDelta?: PriceDelta;
+  dealScore?: DealScore;
+  isAvailable: boolean;
   hasPriceChanged: boolean;
+  isWatchlisted: boolean;
   priceHistory: PriceSnapshotView[];
 }
 
@@ -51,6 +76,10 @@ export interface ArvalAnnouncement {
   offerUrl?: string;
   mainImage?: string;
   mainUrl?: string;
+  images?: Array<{
+    uri?: string;
+    order?: number;
+  }>;
   trim?: string;
   make?: string;
   model?: string;
@@ -59,12 +88,15 @@ export interface ArvalAnnouncement {
   firstRegistrationDate?: string;
   registrationNumber?: string;
   labelCode?: string;
+  reservationLabelCode?: string | null;
   details?: CarDetails;
   purchaseOption?: PurchaseOption;
   reLeasePriceNet?: number | string | null;
   reLeasePrice2Net?: number | string | null;
   reLeasePrice3Net?: number | string | null;
   salePriceNet?: number | string | null;
+  power?: number | string | null;
+  horsePower?: number | string | null;
 }
 
 export interface ArvalNewCarOffer {
@@ -72,6 +104,7 @@ export interface ArvalNewCarOffer {
   offerId: number | string;
   url?: string;
   imagePath?: string;
+  imagePaths?: string[];
   makeName?: string;
   modelName?: string;
   vehicleCatalogName?: string;
@@ -79,6 +112,8 @@ export interface ArvalNewCarOffer {
   fuelTypeName?: string;
   transmissionTypeName?: string;
   updateDate?: string;
+  status?: string | null;
+  horsePower?: number | string | null;
   leasePrice?: number | string | null;
   priceGridRental?: number | string | null;
   downPayment?: number | string | null;
@@ -92,6 +127,7 @@ export interface NormalizedArvalOffer {
   externalId: string;
   offerUrl?: string;
   imageUrl?: string;
+  imageUrls: string[];
   fullName: string;
   brand: string;
   model: string;

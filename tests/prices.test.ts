@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  getPrimaryPriceDelta,
   hasPriceChanged,
   normalizeArvalAnnouncement,
   normalizeArvalNewCarOffer,
@@ -54,6 +55,16 @@ test("detects meaningful price changes while ignoring zero placeholders", () => 
   assert.equal(hasPriceChanged([[1200, 0, 0], [1250, 0, 0]]), true);
 });
 
+test("calculates primary price delta from the latest two non-zero snapshots", () => {
+  assert.deepEqual(getPrimaryPriceDelta([[0], [1200], [1100]]), {
+    amount: -100,
+    percent: -8.333333333333332,
+    previousPrice: 1200,
+    latestPrice: 1100,
+  });
+  assert.equal(getPrimaryPriceDelta([[0], [1400]]), undefined);
+});
+
 test("maps an Arval announcement into the internal offer shape", () => {
   const offer = normalizeArvalAnnouncement({
     id: 42,
@@ -67,14 +78,41 @@ test("maps an Arval announcement into the internal offer shape", () => {
     reLeasePriceNet: 2300,
     reLeasePrice2Net: 2400,
     reLeasePrice3Net: 0,
+    horsePower: 163,
   });
 
   assert.equal(offer.source, "arval");
   assert.equal(offer.purchaseOption, "release");
   assert.equal(offer.externalId, "42");
   assert.equal(offer.fullName, "Volvo XC60 Momentum");
+  assert.equal(offer.details.powerHp, 163);
   assert.deepEqual(offer.prices, [2300, 2400, 0]);
   assert.equal(offer.rawUpdatedAt?.toISOString(), "2025-04-10T09:00:00.000Z");
+});
+
+test("uses Arval kilowatt power when horsepower is missing", () => {
+  const offer = normalizeArvalAnnouncement({
+    id: 43,
+    trim: "Volvo XC40 B3 P Mild Hybrid Plus Dark 5d",
+    make: "Volvo",
+    model: "XC40",
+    power: 120,
+    reLeasePriceNet: 2013,
+  });
+
+  assert.equal(offer.details.powerHp, 163);
+});
+
+test("falls back to parsing power from trim when Arval power fields are missing", () => {
+  const offer = normalizeArvalAnnouncement({
+    id: 44,
+    trim: "Skoda Octavia 2.0 TDI SCR 110kW DSG Style 5d",
+    make: "Skoda",
+    model: "Octavia",
+    reLeasePriceNet: 1800,
+  });
+
+  assert.equal(offer.details.powerHp, 150);
 });
 
 test("maps an Arval sale announcement into a separate offer shape", () => {
@@ -108,6 +146,7 @@ test("maps an Arval new car rental offer into the internal offer shape", () => {
     downPayment: 16211,
     duration: "36",
     mileage: "10000",
+    horsePower: "160",
     imagePath: "https://example.com/car.png",
     url: "/wynajem-oferty/wynajem-dlugoterminowy-male-floty/byd/seal-u-dm-i/26015",
     updateDate: "2026-04-24T07:07:54Z",
@@ -123,5 +162,6 @@ test("maps an Arval new car rental offer into the internal offer shape", () => {
   assert.equal(offer.details.downPayment, 16211);
   assert.equal(offer.details.contractMonths, 36);
   assert.equal(offer.details.annualMileage, 10000);
+  assert.equal(offer.details.powerHp, 160);
   assert.equal(offer.offerUrl, "https://www.arval.pl/wynajem-oferty/wynajem-dlugoterminowy-male-floty/byd/seal-u-dm-i/26015");
 });

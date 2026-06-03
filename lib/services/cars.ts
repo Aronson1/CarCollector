@@ -1,6 +1,8 @@
 import { connectToDatabase } from "../db";
+import { applyDealScores } from "../deals";
 import { CarOffer, PriceSnapshot } from "../models/car";
-import { hasPriceChanged } from "../prices";
+import { parsePowerHp } from "../power";
+import { getPrimaryPriceDelta, hasPriceChanged, normalizeArvalPowerHp } from "../prices";
 import type {
   CarDetails,
   CarOfferView,
@@ -8,7 +10,7 @@ import type {
   PurchaseOption,
 } from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
-import type { Types } from "mongoose";
+import { Types } from "mongoose";
 
 export interface GetCarsFilters {
   purchaseOption?: PurchaseOption;
@@ -16,7 +18,28 @@ export interface GetCarsFilters {
   brand?: string;
   model?: string;
   changedOnly?: boolean;
-  sort?: "newest" | "oldest" | "priceAsc" | "priceDesc";
+  availableOnly?: boolean;
+  watchlistedOnly?: boolean;
+  yearFrom?: number;
+  yearTo?: number;
+  mileageFrom?: number;
+  mileageTo?: number;
+  fuelType?: string;
+  gearbox?: string;
+  contractMonthsFrom?: number;
+  contractMonthsTo?: number;
+  annualMileageFrom?: number;
+  annualMileageTo?: number;
+  downPaymentFrom?: number;
+  downPaymentTo?: number;
+  sort?:
+    | "newest"
+    | "oldest"
+    | "priceAsc"
+    | "priceDesc"
+    | "deltaAsc"
+    | "deltaDesc"
+    | "dealScoreDesc";
   page?: number;
   pageSize?: number | "all";
 }
@@ -24,6 +47,8 @@ export interface GetCarsFilters {
 export interface CarFilterOptions {
   brands: string[];
   models: string[];
+  fuelTypes: string[];
+  gearboxes: string[];
 }
 
 export interface CarSearchResult {
@@ -49,14 +74,18 @@ export async function getCarFilterOptions(
       }
     : { purchaseOption };
 
-  const [brands, models] = await Promise.all([
+  const [brands, models, fuelTypes, gearboxes] = await Promise.all([
     CarOffer.distinct("brand", { purchaseOption }),
     CarOffer.distinct("model", modelQuery),
+    CarOffer.distinct("details.fuelTypeLabel", { purchaseOption }),
+    CarOffer.distinct("details.gearbox", { purchaseOption }),
   ]);
 
   return {
     brands: sortStrings(brands),
     models: sortStrings(models),
+    fuelTypes: sortStrings(fuelTypes),
+    gearboxes: sortStrings(gearboxes),
   };
 }
 
@@ -70,6 +99,13 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
     externalId?: string;
     brand?: { $regex: string; $options: string };
     model?: { $regex: string; $options: string };
+    "details.registrationYear"?: NumberRangeQuery;
+    "details.mileage"?: NumberRangeQuery;
+    "details.fuelTypeLabel"?: { $regex: string; $options: string };
+    "details.gearbox"?: { $regex: string; $options: string };
+    "details.contractMonths"?: NumberRangeQuery;
+    "details.annualMileage"?: NumberRangeQuery;
+    "details.downPayment"?: NumberRangeQuery;
   } = { purchaseOption };
 
   if (filters.id) {
@@ -82,6 +118,51 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
 
   if (filters.model) {
     query.model = { $regex: escapeRegex(filters.model), $options: "i" };
+  }
+
+  addNumberRangeQuery(
+    query,
+    "details.registrationYear",
+    filters.yearFrom,
+    filters.yearTo,
+  );
+  addNumberRangeQuery(
+    query,
+    "details.mileage",
+    filters.mileageFrom,
+    filters.mileageTo,
+  );
+  addNumberRangeQuery(
+    query,
+    "details.contractMonths",
+    filters.contractMonthsFrom,
+    filters.contractMonthsTo,
+  );
+  addNumberRangeQuery(
+    query,
+    "details.annualMileage",
+    filters.annualMileageFrom,
+    filters.annualMileageTo,
+  );
+  addNumberRangeQuery(
+    query,
+    "details.downPayment",
+    filters.downPaymentFrom,
+    filters.downPaymentTo,
+  );
+
+  if (filters.fuelType) {
+    query["details.fuelTypeLabel"] = {
+      $regex: escapeRegex(filters.fuelType),
+      $options: "i",
+    };
+  }
+
+  if (filters.gearbox) {
+    query["details.gearbox"] = {
+      $regex: escapeRegex(filters.gearbox),
+      $options: "i",
+    };
   }
 
   const offers = await CarOffer.find(query).lean();
@@ -106,6 +187,7 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
         externalId: offer.externalId,
         offerUrl: offer.offerUrl || undefined,
         imageUrl: offer.imageUrl || undefined,
+        imageUrls: getImageUrls(offer.imageUrl, offer.imageUrls),
         fullName: offer.fullName,
         brand: offer.brand,
         model: offer.model,
@@ -114,17 +196,26 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
         labelCode: offer.labelCode || undefined,
         announcementCreatedAt: offer.rawCreatedAt?.toISOString(),
         announcementUpdatedAt: offer.rawUpdatedAt?.toISOString(),
-        details: sanitizeDetails(offer.details),
+        details: sanitizeDetails(offer.details, offer.fullName, offer.rawData),
         latestPrices: latest?.prices || [],
         latestFetchedAt: latest?.fetchedAt,
+        priceDelta: getPrimaryPriceDelta(
+          history.map((snapshot) => snapshot.prices),
+        ),
+        isAvailable: isOfferAvailable(offer.rawData),
         hasPriceChanged: hasPriceChanged(history.map((snapshot) => snapshot.prices)),
+        isWatchlisted: Boolean(offer.isWatchlisted),
         priceHistory: history,
       } satisfies CarOfferView;
     });
 
-  const filteredViews = filters.changedOnly
-    ? views.filter((view) => view.hasPriceChanged)
-    : views;
+  const scoredViews = applyDealScores(views);
+  const filteredViews = scoredViews.filter((view) => {
+    if (filters.changedOnly && !view.hasPriceChanged) return false;
+    if (filters.availableOnly && !view.isAvailable) return false;
+    if (filters.watchlistedOnly && !view.isWatchlisted) return false;
+    return true;
+  });
   const sortedViews = sortCars(filteredViews, filters.sort || "newest");
   const total = sortedViews.length;
   const pageSize = filters.pageSize || 30;
@@ -154,6 +245,57 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
   };
 }
 
+export async function setCarWatchlistStatus(
+  id: string,
+  isWatchlisted: boolean,
+): Promise<{ id: string; isWatchlisted: boolean } | null> {
+  await connectToDatabase();
+  await ensurePurchaseOptionMigration();
+
+  if (!Types.ObjectId.isValid(id)) {
+    return null;
+  }
+
+  const offer = await CarOffer.findByIdAndUpdate(
+    id,
+    { $set: { isWatchlisted } },
+    { new: true, projection: { _id: 1, isWatchlisted: 1 } },
+  ).lean();
+
+  if (!offer) {
+    return null;
+  }
+
+  return {
+    id: String(offer._id),
+    isWatchlisted: Boolean(offer.isWatchlisted),
+  };
+}
+
+type NumberRangeQuery = {
+  $gte?: number;
+  $lte?: number;
+};
+
+function addNumberRangeQuery<
+  TQuery extends Record<string, unknown>,
+  TKey extends keyof TQuery,
+>(
+  query: TQuery,
+  key: TKey,
+  from?: number,
+  to?: number,
+) {
+  const range: NumberRangeQuery = {};
+
+  if (typeof from === "number") range.$gte = from;
+  if (typeof to === "number") range.$lte = to;
+
+  if (Object.keys(range).length > 0) {
+    query[key] = range as TQuery[TKey];
+  }
+}
+
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -179,6 +321,18 @@ function sortCars(
 
     if (sort === "priceDesc") {
       return price(right) - price(left);
+    }
+
+    if (sort === "deltaAsc") {
+      return comparePriceDelta(left, right, "asc");
+    }
+
+    if (sort === "deltaDesc") {
+      return comparePriceDelta(left, right, "desc");
+    }
+
+    if (sort === "dealScoreDesc") {
+      return dealScore(right) - dealScore(left);
     }
 
     return timestamp(right) - timestamp(left);
@@ -229,6 +383,48 @@ function price(car: CarOfferView): number {
   return currentPrice ?? Number.MAX_SAFE_INTEGER;
 }
 
+function dealScore(car: CarOfferView): number {
+  return car.dealScore?.score ?? 0;
+}
+
+function comparePriceDelta(
+  left: CarOfferView,
+  right: CarOfferView,
+  direction: "asc" | "desc",
+): number {
+  const leftDelta = left.priceDelta?.amount;
+  const rightDelta = right.priceDelta?.amount;
+
+  if (leftDelta === undefined && rightDelta === undefined) return 0;
+  if (leftDelta === undefined) return 1;
+  if (rightDelta === undefined) return -1;
+
+  return direction === "asc" ? leftDelta - rightDelta : rightDelta - leftDelta;
+}
+
+function isOfferAvailable(rawData: unknown): boolean {
+  if (!rawData || typeof rawData !== "object") {
+    return false;
+  }
+
+  const record = rawData as {
+    reservationLabelCode?: unknown;
+    status?: unknown;
+  };
+
+  if (
+    typeof record.reservationLabelCode === "string" &&
+    record.reservationLabelCode.toLowerCase() === "available"
+  ) {
+    return true;
+  }
+
+  return (
+    typeof record.status === "string" &&
+    record.status.toLowerCase() === "published"
+  );
+}
+
 function sanitizeDetails(details: {
   mileage?: number | null;
   annualMileage?: number | null;
@@ -238,8 +434,16 @@ function sanitizeDetails(details: {
   warrantyMonths?: number | null;
   contractMonths?: number | null;
   downPayment?: number | null;
-} | null | undefined): CarDetails {
-  if (!details) return {};
+  powerHp?: number | null;
+} | null | undefined, fullName?: string, rawData?: unknown): CarDetails {
+  const parsedPowerHp = parsePowerHp(fullName);
+  const rawDataPowerHp = getRawDataPowerHp(rawData);
+
+  if (!details) {
+    return {
+      powerHp: rawDataPowerHp ?? parsedPowerHp,
+    };
+  }
 
   return {
     mileage: details.mileage ?? undefined,
@@ -250,5 +454,29 @@ function sanitizeDetails(details: {
     warrantyMonths: details.warrantyMonths ?? undefined,
     contractMonths: details.contractMonths ?? undefined,
     downPayment: details.downPayment ?? undefined,
+    powerHp: rawDataPowerHp ?? details.powerHp ?? parsedPowerHp,
   };
+}
+
+function getRawDataPowerHp(rawData: unknown): number | undefined {
+  if (!rawData || typeof rawData !== "object") {
+    return undefined;
+  }
+
+  const record = rawData as {
+    horsePower?: number | string | null;
+    power?: number | string | null;
+    trim?: string;
+  };
+
+  return normalizeArvalPowerHp(record);
+}
+
+function getImageUrls(
+  imageUrl?: string | null,
+  imageUrls?: string[] | null,
+): string[] {
+  return Array.from(
+    new Set([imageUrl || undefined, ...(imageUrls || [])].filter(Boolean)),
+  ) as string[];
 }

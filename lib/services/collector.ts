@@ -1,13 +1,16 @@
 import { connectToDatabase } from "../db";
-import { CarOffer, PriceSnapshot } from "../models/car";
+import { CarOffer, CollectorRun, PriceSnapshot } from "../models/car";
 import {
   pricesEqual,
   normalizeArvalAnnouncement,
   normalizeArvalNewCarOffer,
 } from "../prices";
-import { fetchArvalAnnouncements } from "../sources/arval";
+import {
+  fetchArvalAnnouncementDetailsById,
+  fetchArvalAnnouncements,
+} from "../sources/arval";
 import { fetchArvalNewCarOffers } from "../sources/arval-new";
-import type { PurchaseOption } from "../types";
+import type { ArvalAnnouncement, PurchaseOption } from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
 
 export type CollectorPurchaseOption = PurchaseOption | "all";
@@ -21,7 +24,123 @@ export interface CollectorRunResult {
   runs?: CollectorRunResult[];
 }
 
+export interface ImageBackfillResult {
+  purchaseOption: Exclude<PurchaseOption, "newRelease">;
+  pageNumber: number;
+  pageSize: number;
+  fetched: number;
+  matched: number;
+  modified: number;
+  manyImages: number;
+  hasMore: boolean;
+}
+
 const purchaseOptions: PurchaseOption[] = ["release", "sale", "newRelease"];
+
+export async function backfillOfferImages(
+  purchaseOption: Exclude<PurchaseOption, "newRelease">,
+  pageNumber = 1,
+  pageSize = 30,
+): Promise<ImageBackfillResult> {
+  await connectToDatabase();
+  await ensurePurchaseOptionMigration();
+
+  const offers = await CarOffer.find(
+    { source: "arval", purchaseOption },
+    { externalId: 1, imageUrl: 1, rawData: 1 },
+  )
+    .sort({ rawCreatedAt: -1, createdAt: -1, _id: -1 })
+    .skip((pageNumber - 1) * pageSize)
+    .limit(pageSize)
+    .lean();
+
+  const normalizedOffers = await mapWithConcurrency(
+    offers,
+    8,
+    async (offer) => {
+      const rawData = isArvalAnnouncement(offer.rawData)
+        ? offer.rawData
+        : ({ id: offer.externalId } as ArvalAnnouncement);
+
+      try {
+        const details = await fetchArvalAnnouncementDetailsById(offer.externalId);
+        return normalizeArvalAnnouncement(
+          mergeImageDetails(
+            rawData,
+            details,
+            offer.externalId,
+            offer.imageUrl || undefined,
+          ),
+          purchaseOption,
+        );
+      } catch {
+        return normalizeArvalAnnouncement(rawData, purchaseOption);
+      }
+    },
+  );
+
+  const result: ImageBackfillResult = {
+    purchaseOption,
+    pageNumber,
+    pageSize,
+    fetched: offers.length,
+    matched: 0,
+    modified: 0,
+    manyImages: normalizedOffers.filter((offer) => offer.imageUrls.length > 1)
+      .length,
+    hasMore: offers.length === pageSize,
+  };
+
+  if (normalizedOffers.length === 0) {
+    return result;
+  }
+
+  const writeResult = await CarOffer.bulkWrite(
+    normalizedOffers.map((normalized) => ({
+      updateOne: {
+        filter: {
+          source: normalized.source,
+          purchaseOption: normalized.purchaseOption,
+          externalId: normalized.externalId,
+        },
+        update: {
+          $set: {
+            imageUrl: normalized.imageUrl,
+            imageUrls: normalized.imageUrls,
+          },
+        },
+      },
+    })),
+    { ordered: false },
+  );
+
+  result.matched = writeResult.matchedCount;
+  result.modified = writeResult.modifiedCount;
+  return result;
+}
+
+function isArvalAnnouncement(value: unknown): value is ArvalAnnouncement {
+  return Boolean(value && typeof value === "object" && "id" in value);
+}
+
+function mergeImageDetails(
+  announcement: ArvalAnnouncement,
+  details: ArvalAnnouncement,
+  externalId: string,
+  fallbackImageUrl?: string,
+): ArvalAnnouncement {
+  return {
+    ...details,
+    ...announcement,
+    id: announcement.id || externalId,
+    images:
+      details.images && details.images.length > 0
+        ? details.images
+        : announcement.images,
+    mainImage: announcement.mainImage || details.mainImage || fallbackImageUrl,
+    mainUrl: announcement.mainUrl || details.mainUrl,
+  };
+}
 
 export async function runCollector(
   purchaseOption: CollectorPurchaseOption = "all",
@@ -30,24 +149,60 @@ export async function runCollector(
   await ensurePurchaseOptionMigration();
 
   if (purchaseOption === "all") {
-    const runs = await Promise.all(
-      purchaseOptions.map((option) => runCollectorForPurchaseOption(option)),
-    );
+    const startedAt = new Date();
 
-    return {
-      purchaseOption,
-      fetched: sumRuns(runs, "fetched"),
-      offersUpserted: sumRuns(runs, "offersUpserted"),
-      snapshotsCreated: sumRuns(runs, "snapshotsCreated"),
-      skippedUnchanged: sumRuns(runs, "skippedUnchanged"),
-      runs,
-    };
+    try {
+      const runs = await Promise.all(
+        purchaseOptions.map((option) => runCollectorForPurchaseOption(option)),
+      );
+      const result = {
+        purchaseOption,
+        fetched: sumRuns(runs, "fetched"),
+        offersUpserted: sumRuns(runs, "offersUpserted"),
+        snapshotsCreated: sumRuns(runs, "snapshotsCreated"),
+        skippedUnchanged: sumRuns(runs, "skippedUnchanged"),
+        runs,
+      };
+
+      await recordCollectorRun(startedAt, result, "success");
+      return result;
+    } catch (error) {
+      await recordCollectorRun(startedAt, {
+        purchaseOption,
+        fetched: 0,
+        offersUpserted: 0,
+        snapshotsCreated: 0,
+        skippedUnchanged: 0,
+      }, "error", error instanceof Error ? error.message : "Collector run failed.");
+      throw error;
+    }
   }
 
   return runCollectorForPurchaseOption(purchaseOption);
 }
 
 async function runCollectorForPurchaseOption(
+  purchaseOption: PurchaseOption,
+): Promise<CollectorRunResult> {
+  const startedAt = new Date();
+
+  try {
+    const result = await collectPurchaseOption(purchaseOption);
+    await recordCollectorRun(startedAt, result, "success");
+    return result;
+  } catch (error) {
+    await recordCollectorRun(startedAt, {
+      purchaseOption,
+      fetched: 0,
+      offersUpserted: 0,
+      snapshotsCreated: 0,
+      skippedUnchanged: 0,
+    }, "error", error instanceof Error ? error.message : "Collector run failed.");
+    throw error;
+  }
+}
+
+async function collectPurchaseOption(
   purchaseOption: PurchaseOption,
 ): Promise<CollectorRunResult> {
   const normalizedOffers =
@@ -85,6 +240,7 @@ async function runCollectorForPurchaseOption(
             purchaseOption: normalized.purchaseOption,
             offerUrl: normalized.offerUrl,
             imageUrl: normalized.imageUrl,
+            imageUrls: normalized.imageUrls,
             fullName: normalized.fullName,
             brand: normalized.brand,
             model: normalized.model,
@@ -185,9 +341,53 @@ async function runCollectorForPurchaseOption(
   return result;
 }
 
+async function recordCollectorRun(
+  startedAt: Date,
+  result: CollectorRunResult,
+  status: "success" | "error",
+  message?: string,
+) {
+  await CollectorRun.create({
+    purchaseOption: result.purchaseOption,
+    status,
+    startedAt,
+    finishedAt: new Date(),
+    fetched: result.fetched,
+    offersUpserted: result.offersUpserted,
+    snapshotsCreated: result.snapshotsCreated,
+    skippedUnchanged: result.skippedUnchanged,
+    message,
+  });
+}
+
 function sumRuns(
   runs: CollectorRunResult[],
   key: "fetched" | "offersUpserted" | "snapshotsCreated" | "skippedUnchanged",
 ): number {
   return runs.reduce((total, run) => total + run[key], 0);
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  mapper: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(values[index]);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, values.length) },
+    () => worker(),
+  );
+
+  await Promise.all(workers);
+  return results;
 }
