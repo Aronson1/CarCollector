@@ -71,12 +71,44 @@ test("rewards higher power when other deal factors are comparable", () => {
   assert.ok(stronger.dealScore.reasons.includes("wysoka moc"));
 });
 
+test("rewards valuable equipment when other deal factors are comparable", () => {
+  const [equipped, basic] = applyDealScores([
+    createCar({
+      fullName: "Equipped car",
+      latestPrices: [1500],
+      powerHp: 180,
+      equipmentItems: [
+        "Kamera parkowania",
+        "Tempomat adaptacyjny ACC",
+        "Reflektory Matrix LED",
+        "Podgrzewanie przednich foteli",
+        "Apple CarPlay i Android Auto",
+        "System bezkluczykowy KESSY",
+      ],
+    }),
+    createCar({
+      fullName: "Basic car",
+      latestPrices: [1500],
+      powerHp: 180,
+      equipmentItems: ["Dywaniki welurowe"],
+    }),
+  ]);
+
+  assert.ok(equipped.dealScore);
+  assert.ok(basic.dealScore);
+  assert.ok(equipped.dealScore.score > basic.dealScore.score);
+  assert.ok(
+    equipped.dealScore.factors.equipment > basic.dealScore.factors.equipment,
+  );
+});
+
 function createCar({
   fullName = "Car",
   latestPrices,
   registrationYear = 2024,
   mileage = 30000,
   powerHp,
+  equipmentItems = [],
   priceDelta,
   priceHistory,
 }: {
@@ -85,6 +117,7 @@ function createCar({
   registrationYear?: number;
   mileage?: number;
   powerHp?: number;
+  equipmentItems?: string[];
   priceDelta?: CarOfferView["priceDelta"];
   priceHistory?: Array<{ prices: number[]; fetchedAt: string }>;
 }): CarOfferView {
@@ -93,6 +126,8 @@ function createCar({
     source: "arval",
     purchaseOption: "release",
     externalId: fullName,
+    imageUrls: [],
+    equipmentItems,
     fullName,
     brand: "Codex",
     model: "Deal",

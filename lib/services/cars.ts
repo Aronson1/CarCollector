@@ -2,7 +2,12 @@ import { connectToDatabase } from "../db";
 import { applyDealScores } from "../deals";
 import { CarOffer, PriceSnapshot } from "../models/car";
 import { parsePowerHp } from "../power";
-import { getPrimaryPriceDelta, hasPriceChanged, normalizeArvalPowerHp } from "../prices";
+import {
+  getPrimaryPriceDelta,
+  hasPriceChanged,
+  normalizeArvalEquipmentItems,
+  normalizeArvalPowerHp,
+} from "../prices";
 import type {
   CarDetails,
   CarOfferView,
@@ -197,6 +202,7 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
         offerUrl: offer.offerUrl || undefined,
         imageUrl: offer.imageUrl || undefined,
         imageUrls: getImageUrls(offer.imageUrl, offer.imageUrls),
+        equipmentItems: getEquipmentItems(offer.equipmentItems, offer.rawData),
         fullName: offer.fullName,
         brand: offer.brand,
         model: offer.model,
@@ -488,4 +494,31 @@ function getImageUrls(
   return Array.from(
     new Set([imageUrl || undefined, ...(imageUrls || [])].filter(Boolean)),
   ) as string[];
+}
+
+function getEquipmentItems(
+  equipmentItems?: string[] | null,
+  rawData?: unknown,
+): string[] {
+  const storedItems = uniqueStrings(equipmentItems || []);
+
+  if (storedItems.length > 0) {
+    return storedItems;
+  }
+
+  if (!rawData || typeof rawData !== "object") {
+    return [];
+  }
+
+  return normalizeArvalEquipmentItems(rawData);
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
 }

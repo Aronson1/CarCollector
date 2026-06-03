@@ -20,6 +20,7 @@ export interface DealScore {
     mileage: number;
     trend: number;
     power: number;
+    equipment: number;
   };
 }
 
@@ -43,6 +44,7 @@ export interface CarOfferView {
   offerUrl?: string;
   imageUrl?: string;
   imageUrls: string[];
+  equipmentItems: string[];
   fullName: string;
   brand: string;
   model: string;
@@ -79,6 +81,15 @@ export interface ArvalAnnouncement {
   images?: Array<{
     uri?: string;
     order?: number;
+  }>;
+  equipments?: Array<{
+    specification?: string;
+    category?: string;
+    deliveredAs?: string;
+    name?: string;
+    type?: string;
+    ranking?: number;
+    visibleWindowPdf?: boolean;
   }>;
   trim?: string;
   make?: string;
@@ -128,6 +139,7 @@ export interface NormalizedArvalOffer {
   offerUrl?: string;
   imageUrl?: string;
   imageUrls: string[];
+  equipmentItems: string[];
   fullName: string;
   brand: string;
   model: string;

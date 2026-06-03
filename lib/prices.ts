@@ -97,7 +97,11 @@ export function getPrimaryPriceDelta(history: PriceVector[]): PriceDelta | undef
 
 function uniqueStrings(values: Array<string | undefined>): string[] {
   return Array.from(
-    new Set(values.filter((value): value is string => Boolean(value))),
+    new Set(
+      values
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
   );
 }
 
@@ -120,12 +124,21 @@ function normalizeArvalNewCarImageUrls(offer: ArvalNewCarOffer): string[] {
   return uniqueStrings([offer.imagePath, ...(offer.imagePaths || [])]);
 }
 
+export function normalizeArvalEquipmentItems(
+  announcement: Pick<ArvalAnnouncement, "equipments">,
+): string[] {
+  return uniqueStrings(
+    (announcement.equipments || []).map((item) => item.specification),
+  );
+}
+
 export function normalizeArvalAnnouncement(
   announcement: ArvalAnnouncement,
   purchaseOption: PurchaseOption = announcement.purchaseOption || "release",
 ): NormalizedArvalOffer {
   const externalId = String(announcement.id);
   const imageUrls = normalizeArvalAnnouncementImageUrls(announcement);
+  const equipmentItems = normalizeArvalEquipmentItems(announcement);
 
   return {
     source: "arval",
@@ -134,6 +147,7 @@ export function normalizeArvalAnnouncement(
     offerUrl: announcement.offerUrl,
     imageUrl: imageUrls[0],
     imageUrls,
+    equipmentItems,
     fullName: announcement.trim || `${announcement.make || "Unknown"} ${announcement.model || ""}`.trim(),
     brand: announcement.make || "Unknown",
     model: announcement.model || "Unknown",
@@ -169,6 +183,7 @@ export function normalizeArvalNewCarOffer(
       : undefined,
     imageUrl: imageUrls[0],
     imageUrls,
+    equipmentItems: [],
     fullName: [brand, model, catalogName].filter(Boolean).join(" "),
     brand,
     model,
