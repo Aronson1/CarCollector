@@ -21,7 +21,72 @@ export interface CollectorRunResult {
   runs?: CollectorRunResult[];
 }
 
+export interface ImageBackfillResult {
+  purchaseOption: Exclude<PurchaseOption, "newRelease">;
+  pageNumber: number;
+  pageSize: number;
+  fetched: number;
+  matched: number;
+  modified: number;
+  manyImages: number;
+  hasMore: boolean;
+}
+
 const purchaseOptions: PurchaseOption[] = ["release", "sale", "newRelease"];
+
+export async function backfillOfferImages(
+  purchaseOption: Exclude<PurchaseOption, "newRelease">,
+  pageNumber = 1,
+  pageSize = 30,
+): Promise<ImageBackfillResult> {
+  await connectToDatabase();
+  await ensurePurchaseOptionMigration();
+
+  const normalizedOffers = (
+    await fetchArvalAnnouncements({ pageNumber, pageSize, purchaseOption })
+  ).map((announcement) =>
+    normalizeArvalAnnouncement(announcement, purchaseOption),
+  );
+
+  const result: ImageBackfillResult = {
+    purchaseOption,
+    pageNumber,
+    pageSize,
+    fetched: normalizedOffers.length,
+    matched: 0,
+    modified: 0,
+    manyImages: normalizedOffers.filter((offer) => offer.imageUrls.length > 1)
+      .length,
+    hasMore: normalizedOffers.length === pageSize,
+  };
+
+  if (normalizedOffers.length === 0) {
+    return result;
+  }
+
+  const writeResult = await CarOffer.bulkWrite(
+    normalizedOffers.map((normalized) => ({
+      updateOne: {
+        filter: {
+          source: normalized.source,
+          purchaseOption: normalized.purchaseOption,
+          externalId: normalized.externalId,
+        },
+        update: {
+          $set: {
+            imageUrl: normalized.imageUrl,
+            imageUrls: normalized.imageUrls,
+          },
+        },
+      },
+    })),
+    { ordered: false },
+  );
+
+  result.matched = writeResult.matchedCount;
+  result.modified = writeResult.modifiedCount;
+  return result;
+}
 
 export async function runCollector(
   purchaseOption: CollectorPurchaseOption = "all",
