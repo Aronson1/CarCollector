@@ -16,6 +16,19 @@ export async function GET(request: Request) {
       model: searchParams.get("model") || undefined,
       changedOnly: searchParams.get("changedOnly") === "true",
       availableOnly: searchParams.get("availableOnly") === "true",
+      watchlistedOnly: searchParams.get("watchlistedOnly") === "true",
+      yearFrom: parseNumber(searchParams.get("yearFrom")),
+      yearTo: parseNumber(searchParams.get("yearTo")),
+      mileageFrom: parseNumber(searchParams.get("mileageFrom")),
+      mileageTo: parseNumber(searchParams.get("mileageTo")),
+      fuelType: searchParams.get("fuelType") || undefined,
+      gearbox: searchParams.get("gearbox") || undefined,
+      contractMonthsFrom: parseNumber(searchParams.get("contractMonthsFrom")),
+      contractMonthsTo: parseNumber(searchParams.get("contractMonthsTo")),
+      annualMileageFrom: parseNumber(searchParams.get("annualMileageFrom")),
+      annualMileageTo: parseNumber(searchParams.get("annualMileageTo")),
+      downPaymentFrom: parseNumber(searchParams.get("downPaymentFrom")),
+      downPaymentTo: parseNumber(searchParams.get("downPaymentTo")),
       sort: parseSort(searchParams.get("sort")),
       page: parsePage(searchParams.get("page")),
       pageSize: parsePageSize(searchParams.get("pageSize")),
@@ -43,6 +56,13 @@ function parsePurchaseOption(value: string | null) {
 function parsePage(value: string | null) {
   const page = Number(value);
   return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
+function parseNumber(value: string | null) {
+  if (!value) return undefined;
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
 }
 
 function parsePageSize(value: string | null) {

@@ -26,12 +26,20 @@ export default async function DashboardPage() {
               Aktualizacja: {formatDateTime(stats.generatedAt)}
             </p>
           </div>
-          <Link
-            className="min-h-12 rounded border border-slate-700 px-4 py-3 text-center text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100 sm:self-start lg:self-auto"
-            href="/"
-          >
-            Panel ofert
-          </Link>
+          <div className="flex flex-col gap-2 sm:flex-row sm:self-start lg:self-auto">
+            <Link
+              className="min-h-12 rounded border border-slate-700 px-4 py-3 text-center text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100"
+              href="/"
+            >
+              Panel ofert
+            </Link>
+            <Link
+              className="min-h-12 rounded border border-slate-700 px-4 py-3 text-center text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100"
+              href="/watchlist"
+            >
+              Watchlista
+            </Link>
+          </div>
         </header>
 
         <Dashboard stats={stats} />

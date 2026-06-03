@@ -35,6 +35,8 @@ const purchaseOptions: PurchaseOption[] = ["release", "sale", "newRelease"];
 interface FilterOptions {
   brands: string[];
   models: string[];
+  fuelTypes: string[];
+  gearboxes: string[];
 }
 
 export default function Home() {
@@ -44,6 +46,7 @@ export default function Home() {
   const [selectedCarId, setSelectedCarId] = useState<string | null>(null);
   const [canScroll, setCanScroll] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showParameterFilters, setShowParameterFilters] = useState(false);
   const [previewImage, setPreviewImage] = useState<{
     alt: string;
     images: string[];
@@ -58,6 +61,8 @@ export default function Home() {
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     brands: [],
     models: [],
+    fuelTypes: [],
+    gearboxes: [],
   });
   const [pagination, setPagination] = useState<{
     page: number;
@@ -90,6 +95,19 @@ export default function Home() {
     if (nextFilters.model) params.set("model", nextFilters.model);
     if (nextFilters.changedOnly) params.set("changedOnly", "true");
     if (nextFilters.availableOnly) params.set("availableOnly", "true");
+    if (nextFilters.watchlistedOnly) params.set("watchlistedOnly", "true");
+    appendParam(params, "yearFrom", nextFilters.yearFrom);
+    appendParam(params, "yearTo", nextFilters.yearTo);
+    appendParam(params, "mileageFrom", nextFilters.mileageFrom);
+    appendParam(params, "mileageTo", nextFilters.mileageTo);
+    if (nextFilters.fuelType) params.set("fuelType", nextFilters.fuelType);
+    if (nextFilters.gearbox) params.set("gearbox", nextFilters.gearbox);
+    appendParam(params, "contractMonthsFrom", nextFilters.contractMonthsFrom);
+    appendParam(params, "contractMonthsTo", nextFilters.contractMonthsTo);
+    appendParam(params, "annualMileageFrom", nextFilters.annualMileageFrom);
+    appendParam(params, "annualMileageTo", nextFilters.annualMileageTo);
+    appendParam(params, "downPaymentFrom", nextFilters.downPaymentFrom);
+    appendParam(params, "downPaymentTo", nextFilters.downPaymentTo);
     params.set("sort", nextFilters.sort);
     params.set("page", String(nextPage));
     params.set("pageSize", nextPageSize);
@@ -148,6 +166,8 @@ export default function Home() {
       setFilterOptions({
         brands: payload.brands || [],
         models: payload.models || [],
+        fuelTypes: payload.fuelTypes || [],
+        gearboxes: payload.gearboxes || [],
       });
     } catch (error) {
       console.error(error);
@@ -193,6 +213,68 @@ export default function Home() {
       );
       setCollectorState("error");
       setCollectorPurchaseOption(null);
+    }
+  }
+
+  async function toggleWatchlist(car: CarOfferView) {
+    const nextIsWatchlisted = !car.isWatchlisted;
+    setCars((current) =>
+      current.map((item) =>
+        item.id === car.id
+          ? { ...item, isWatchlisted: nextIsWatchlisted }
+          : item,
+      ),
+    );
+    setCollectorMessage("");
+
+    try {
+      const response = await fetch(`/api/cars/${car.id}/watchlist`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isWatchlisted: nextIsWatchlisted }),
+      });
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.message || "Could not update watchlist.");
+      }
+
+      if (filters.watchlistedOnly && !nextIsWatchlisted) {
+        setCars((current) => current.filter((item) => item.id !== car.id));
+        setPagination((current) => {
+          const total = Math.max(0, current.total - 1);
+          const totalPages = getTotalPages(total, current.pageSize);
+
+          return {
+            ...current,
+            page: Math.min(current.page, totalPages),
+            total,
+            totalPages,
+          };
+        });
+      } else if (payload.id === car.id) {
+        setCars((current) =>
+          current.map((item) =>
+            item.id === car.id
+              ? { ...item, isWatchlisted: Boolean(payload.isWatchlisted) }
+              : item,
+          ),
+        );
+      }
+    } catch (error) {
+      console.error(error);
+      setCars((current) =>
+        current.map((item) =>
+          item.id === car.id
+            ? { ...item, isWatchlisted: car.isWatchlisted }
+            : item,
+        ),
+      );
+      setCollectorMessage(
+        error instanceof Error
+          ? error.message
+          : "Nie udało się zaktualizować watchlisty.",
+      );
     }
   }
 
@@ -349,12 +431,20 @@ export default function Home() {
             </h1>
           </div>
           <div className="flex flex-col gap-3">
-            <Link
-              className="min-h-12 rounded border border-slate-700 px-4 py-3 text-center text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100 sm:self-end"
-              href="/dashboard"
-            >
-              Dashboard trendów
-            </Link>
+            <div className="flex flex-col gap-2 sm:flex-row sm:self-end">
+              <Link
+                className="min-h-12 rounded border border-slate-700 px-4 py-3 text-center text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100"
+                href="/watchlist"
+              >
+                Watchlista
+              </Link>
+              <Link
+                className="min-h-12 rounded border border-slate-700 px-4 py-3 text-center text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100"
+                href="/dashboard"
+              >
+                Dashboard trendów
+              </Link>
+            </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:gap-2">
               {purchaseOptions.map((option) => (
                 <button
@@ -395,7 +485,7 @@ export default function Home() {
             ))}
           </div>
 
-          <div className="grid gap-x-3 gap-y-4 md:grid-cols-[1fr_1fr_1fr_auto_auto_auto_auto]">
+          <div className="grid gap-x-3 gap-y-4 lg:grid-cols-[1fr_1fr_1fr_auto_auto_auto_auto_auto]">
             <input
               className="h-12 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400 sm:h-10"
               onChange={(event) =>
@@ -472,6 +562,20 @@ export default function Home() {
               />
               Dostępne
             </label>
+            <label className="flex min-h-12 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 py-3 text-sm text-slate-200 sm:min-h-10 sm:py-2">
+              <input
+                checked={filters.watchlistedOnly}
+                className="h-4 w-4 accent-cyan-400"
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    watchlistedOnly: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              Watchlista
+            </label>
             <select
               aria-label="Sortowanie"
               className="h-12 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400 sm:h-10"
@@ -493,6 +597,17 @@ export default function Home() {
             </select>
             <div className="flex gap-3 pt-1 sm:gap-2 sm:pt-0">
               <button
+                className={`min-h-12 rounded border px-5 py-3 text-sm font-semibold leading-tight transition sm:min-h-10 sm:px-4 sm:py-2 ${
+                  showParameterFilters
+                    ? "border-cyan-400 bg-cyan-400/10 text-cyan-100"
+                    : "border-slate-700 text-slate-100 hover:border-slate-500"
+                }`}
+                onClick={() => setShowParameterFilters((current) => !current)}
+                type="button"
+              >
+                Parametry
+              </button>
+              <button
                 className="min-h-12 rounded bg-white px-5 py-3 text-sm font-semibold leading-tight text-slate-950 transition hover:bg-slate-200 sm:min-h-10 sm:px-4 sm:py-2"
                 onClick={() => loadCars(filters, 1, pagination.pageSize)}
                 type="button"
@@ -508,6 +623,116 @@ export default function Home() {
               </button>
             </div>
           </div>
+          {showParameterFilters && (
+            <div className="grid gap-3 rounded border border-slate-800 bg-slate-900/50 p-3 md:grid-cols-2 xl:grid-cols-4">
+              <RangeInputs
+                fromLabel="Rocznik od"
+                fromValue={filters.yearFrom}
+                onFromChange={(value) =>
+                  setFilters((current) => ({ ...current, yearFrom: value }))
+                }
+                onToChange={(value) =>
+                  setFilters((current) => ({ ...current, yearTo: value }))
+                }
+                toLabel="Rocznik do"
+                toValue={filters.yearTo}
+              />
+              <RangeInputs
+                fromLabel="Przebieg od"
+                fromValue={filters.mileageFrom}
+                onFromChange={(value) =>
+                  setFilters((current) => ({ ...current, mileageFrom: value }))
+                }
+                onToChange={(value) =>
+                  setFilters((current) => ({ ...current, mileageTo: value }))
+                }
+                toLabel="Przebieg do"
+                toValue={filters.mileageTo}
+              />
+              <Autocomplete
+                freeSolo
+                inputValue={filters.fuelType}
+                onInputChange={(_, value) =>
+                  setFilters((current) => ({ ...current, fuelType: value }))
+                }
+                options={filterOptions.fuelTypes}
+                renderInput={(params) => (
+                  <TextField {...params} label="Paliwo" sx={autocompleteSx} />
+                )}
+                size="small"
+                slotProps={autocompleteSlotProps}
+                value={filters.fuelType || null}
+              />
+              <Autocomplete
+                freeSolo
+                inputValue={filters.gearbox}
+                onInputChange={(_, value) =>
+                  setFilters((current) => ({ ...current, gearbox: value }))
+                }
+                options={filterOptions.gearboxes}
+                renderInput={(params) => (
+                  <TextField {...params} label="Skrzynia" sx={autocompleteSx} />
+                )}
+                size="small"
+                slotProps={autocompleteSlotProps}
+                value={filters.gearbox || null}
+              />
+              <RangeInputs
+                fromLabel="Kontrakt od"
+                fromValue={filters.contractMonthsFrom}
+                onFromChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    contractMonthsFrom: value,
+                  }))
+                }
+                onToChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    contractMonthsTo: value,
+                  }))
+                }
+                toLabel="Kontrakt do"
+                toValue={filters.contractMonthsTo}
+              />
+              <RangeInputs
+                fromLabel="Km/rok od"
+                fromValue={filters.annualMileageFrom}
+                onFromChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    annualMileageFrom: value,
+                  }))
+                }
+                onToChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    annualMileageTo: value,
+                  }))
+                }
+                toLabel="Km/rok do"
+                toValue={filters.annualMileageTo}
+              />
+              <RangeInputs
+                fromLabel="Wpłata od"
+                fromValue={filters.downPaymentFrom}
+                onFromChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    downPaymentFrom: value,
+                  }))
+                }
+                onToChange={(value) =>
+                  setFilters((current) => ({
+                    ...current,
+                    downPaymentTo: value,
+                  }))
+                }
+                toLabel="Wpłata do"
+                toValue={filters.downPaymentTo}
+              />
+            </div>
+          )}
         </section>
 
         {(collectorMessage || loadState === "error") && (
@@ -583,6 +808,7 @@ export default function Home() {
                           </h3>
                           {car.isAvailable && <AvailableBadge />}
                           <DealScoreBadge car={car} />
+                          {car.isWatchlisted && <WatchlistBadge />}
                           {car.hasPriceChanged && (
                             <span className="rounded bg-amber-300 px-2 py-1 text-xs font-semibold text-slate-950">
                               cena zmieniona
@@ -635,6 +861,17 @@ export default function Home() {
                         </dl>
                       </div>
                       <div className="flex items-start gap-2 md:flex-col">
+                        <button
+                          className={`h-9 rounded px-3 text-sm font-semibold transition ${
+                            car.isWatchlisted
+                              ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
+                              : "border border-slate-700 text-slate-100 hover:border-cyan-300"
+                          }`}
+                          onClick={() => toggleWatchlist(car)}
+                          type="button"
+                        >
+                          {car.isWatchlisted ? "Obserwowane" : "Obserwuj"}
+                        </button>
                         {hasChart && (
                           <button
                             className="h-9 rounded bg-slate-100 px-3 text-sm font-semibold text-slate-950 transition hover:bg-white"
@@ -811,6 +1048,51 @@ function AvailableBadge() {
   );
 }
 
+function WatchlistBadge() {
+  return (
+    <span className="inline-flex min-h-6 items-center rounded bg-cyan-400/15 px-2 py-1 text-xs font-semibold text-cyan-100 ring-1 ring-cyan-400/30">
+      Watchlista
+    </span>
+  );
+}
+
+function RangeInputs({
+  fromLabel,
+  fromValue,
+  onFromChange,
+  onToChange,
+  toLabel,
+  toValue,
+}: {
+  fromLabel: string;
+  fromValue: string;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
+  toLabel: string;
+  toValue: string;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <input
+        className="h-12 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400 sm:h-10"
+        inputMode="numeric"
+        onChange={(event) => onFromChange(event.target.value)}
+        placeholder={fromLabel}
+        type="number"
+        value={fromValue}
+      />
+      <input
+        className="h-12 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-white outline-none focus:border-cyan-400 sm:h-10"
+        inputMode="numeric"
+        onChange={(event) => onToChange(event.target.value)}
+        placeholder={toLabel}
+        type="number"
+        value={toValue}
+      />
+    </div>
+  );
+}
+
 function CarImageGallery({
   car,
   images,
@@ -955,8 +1237,27 @@ function createDefaultFilters() {
     model: "",
     changedOnly: false,
     availableOnly: false,
+    watchlistedOnly: false,
+    yearFrom: "",
+    yearTo: "",
+    mileageFrom: "",
+    mileageTo: "",
+    fuelType: "",
+    gearbox: "",
+    contractMonthsFrom: "",
+    contractMonthsTo: "",
+    annualMileageFrom: "",
+    annualMileageTo: "",
+    downPaymentFrom: "",
+    downPaymentTo: "",
     sort: "newest",
   };
+}
+
+function appendParam(params: URLSearchParams, key: string, value: string) {
+  if (value.trim()) {
+    params.set(key, value.trim());
+  }
 }
 
 function getCarImages(car: CarOfferView): string[] {
@@ -1047,6 +1348,11 @@ function normalizePageSize(
   return ["10", "30", "60", "100"].includes(normalized)
     ? (normalized as PageSizeValue)
     : fallback;
+}
+
+function getTotalPages(total: number, pageSize: PageSizeValue) {
+  if (pageSize === "all") return 1;
+  return Math.max(1, Math.ceil(total / Number(pageSize)));
 }
 
 const autocompleteSx = {

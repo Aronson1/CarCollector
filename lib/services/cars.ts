@@ -10,7 +10,7 @@ import type {
   PurchaseOption,
 } from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
-import type { Types } from "mongoose";
+import { Types } from "mongoose";
 
 export interface GetCarsFilters {
   purchaseOption?: PurchaseOption;
@@ -19,6 +19,19 @@ export interface GetCarsFilters {
   model?: string;
   changedOnly?: boolean;
   availableOnly?: boolean;
+  watchlistedOnly?: boolean;
+  yearFrom?: number;
+  yearTo?: number;
+  mileageFrom?: number;
+  mileageTo?: number;
+  fuelType?: string;
+  gearbox?: string;
+  contractMonthsFrom?: number;
+  contractMonthsTo?: number;
+  annualMileageFrom?: number;
+  annualMileageTo?: number;
+  downPaymentFrom?: number;
+  downPaymentTo?: number;
   sort?:
     | "newest"
     | "oldest"
@@ -34,6 +47,8 @@ export interface GetCarsFilters {
 export interface CarFilterOptions {
   brands: string[];
   models: string[];
+  fuelTypes: string[];
+  gearboxes: string[];
 }
 
 export interface CarSearchResult {
@@ -59,14 +74,18 @@ export async function getCarFilterOptions(
       }
     : { purchaseOption };
 
-  const [brands, models] = await Promise.all([
+  const [brands, models, fuelTypes, gearboxes] = await Promise.all([
     CarOffer.distinct("brand", { purchaseOption }),
     CarOffer.distinct("model", modelQuery),
+    CarOffer.distinct("details.fuelTypeLabel", { purchaseOption }),
+    CarOffer.distinct("details.gearbox", { purchaseOption }),
   ]);
 
   return {
     brands: sortStrings(brands),
     models: sortStrings(models),
+    fuelTypes: sortStrings(fuelTypes),
+    gearboxes: sortStrings(gearboxes),
   };
 }
 
@@ -80,6 +99,13 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
     externalId?: string;
     brand?: { $regex: string; $options: string };
     model?: { $regex: string; $options: string };
+    "details.registrationYear"?: NumberRangeQuery;
+    "details.mileage"?: NumberRangeQuery;
+    "details.fuelTypeLabel"?: { $regex: string; $options: string };
+    "details.gearbox"?: { $regex: string; $options: string };
+    "details.contractMonths"?: NumberRangeQuery;
+    "details.annualMileage"?: NumberRangeQuery;
+    "details.downPayment"?: NumberRangeQuery;
   } = { purchaseOption };
 
   if (filters.id) {
@@ -92,6 +118,51 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
 
   if (filters.model) {
     query.model = { $regex: escapeRegex(filters.model), $options: "i" };
+  }
+
+  addNumberRangeQuery(
+    query,
+    "details.registrationYear",
+    filters.yearFrom,
+    filters.yearTo,
+  );
+  addNumberRangeQuery(
+    query,
+    "details.mileage",
+    filters.mileageFrom,
+    filters.mileageTo,
+  );
+  addNumberRangeQuery(
+    query,
+    "details.contractMonths",
+    filters.contractMonthsFrom,
+    filters.contractMonthsTo,
+  );
+  addNumberRangeQuery(
+    query,
+    "details.annualMileage",
+    filters.annualMileageFrom,
+    filters.annualMileageTo,
+  );
+  addNumberRangeQuery(
+    query,
+    "details.downPayment",
+    filters.downPaymentFrom,
+    filters.downPaymentTo,
+  );
+
+  if (filters.fuelType) {
+    query["details.fuelTypeLabel"] = {
+      $regex: escapeRegex(filters.fuelType),
+      $options: "i",
+    };
+  }
+
+  if (filters.gearbox) {
+    query["details.gearbox"] = {
+      $regex: escapeRegex(filters.gearbox),
+      $options: "i",
+    };
   }
 
   const offers = await CarOffer.find(query).lean();
@@ -133,17 +204,19 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
         ),
         isAvailable: isOfferAvailable(offer.rawData),
         hasPriceChanged: hasPriceChanged(history.map((snapshot) => snapshot.prices)),
+        isWatchlisted: Boolean(offer.isWatchlisted),
         priceHistory: history,
       } satisfies CarOfferView;
     });
 
-  const filteredViews = views.filter((view) => {
+  const scoredViews = applyDealScores(views);
+  const filteredViews = scoredViews.filter((view) => {
     if (filters.changedOnly && !view.hasPriceChanged) return false;
     if (filters.availableOnly && !view.isAvailable) return false;
+    if (filters.watchlistedOnly && !view.isWatchlisted) return false;
     return true;
   });
-  const scoredViews = applyDealScores(filteredViews);
-  const sortedViews = sortCars(scoredViews, filters.sort || "newest");
+  const sortedViews = sortCars(filteredViews, filters.sort || "newest");
   const total = sortedViews.length;
   const pageSize = filters.pageSize || 30;
 
@@ -170,6 +243,57 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
     totalPages,
     listUpdatedAt: latestListUpdate?.toISOString(),
   };
+}
+
+export async function setCarWatchlistStatus(
+  id: string,
+  isWatchlisted: boolean,
+): Promise<{ id: string; isWatchlisted: boolean } | null> {
+  await connectToDatabase();
+  await ensurePurchaseOptionMigration();
+
+  if (!Types.ObjectId.isValid(id)) {
+    return null;
+  }
+
+  const offer = await CarOffer.findByIdAndUpdate(
+    id,
+    { $set: { isWatchlisted } },
+    { new: true, projection: { _id: 1, isWatchlisted: 1 } },
+  ).lean();
+
+  if (!offer) {
+    return null;
+  }
+
+  return {
+    id: String(offer._id),
+    isWatchlisted: Boolean(offer.isWatchlisted),
+  };
+}
+
+type NumberRangeQuery = {
+  $gte?: number;
+  $lte?: number;
+};
+
+function addNumberRangeQuery<
+  TQuery extends Record<string, unknown>,
+  TKey extends keyof TQuery,
+>(
+  query: TQuery,
+  key: TKey,
+  from?: number,
+  to?: number,
+) {
+  const range: NumberRangeQuery = {};
+
+  if (typeof from === "number") range.$gte = from;
+  if (typeof to === "number") range.$lte = to;
+
+  if (Object.keys(range).length > 0) {
+    query[key] = range as TQuery[TKey];
+  }
 }
 
 function escapeRegex(value: string): string {

@@ -58,6 +58,7 @@ export interface CarOfferView {
   dealScore?: DealScore;
   isAvailable: boolean;
   hasPriceChanged: boolean;
+  isWatchlisted: boolean;
   priceHistory: PriceSnapshotView[];
 }
 

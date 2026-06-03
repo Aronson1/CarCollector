@@ -35,6 +35,7 @@ const carOfferSchema = new Schema(
     firstRegistrationDate: String,
     registrationNumber: String,
     labelCode: String,
+    isWatchlisted: { type: Boolean, default: false, index: true },
     details: { type: carDetailsSchema, default: {} },
     rawCreatedAt: Date,
     rawUpdatedAt: Date,
