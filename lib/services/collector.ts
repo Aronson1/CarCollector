@@ -231,43 +231,55 @@ async function collectPurchaseOption(
     return result;
   }
 
+  const externalIds = normalizedOffers.map((offer) => offer.externalId);
+  const existingOfferImages = await getExistingOfferImages(
+    purchaseOption,
+    externalIds,
+  );
+
   await CarOffer.bulkWrite(
-    normalizedOffers.map((normalized) => ({
-      updateOne: {
-        filter: {
-          source: normalized.source,
-          purchaseOption: normalized.purchaseOption,
-          externalId: normalized.externalId,
-        },
-        update: {
-          $set: {
-            purchaseOption: normalized.purchaseOption,
-            offerUrl: normalized.offerUrl,
-            imageUrl: normalized.imageUrl,
-            imageUrls: normalized.imageUrls,
-            fullName: normalized.fullName,
-            brand: normalized.brand,
-            model: normalized.model,
-            firstRegistrationDate: normalized.firstRegistrationDate,
-            registrationNumber: normalized.registrationNumber,
-            labelCode: normalized.labelCode,
-            details: normalized.details,
-            rawCreatedAt: normalized.rawCreatedAt,
-            rawUpdatedAt: normalized.rawUpdatedAt,
-            rawData: normalized.rawData,
-          },
-          $setOnInsert: {
+    normalizedOffers.map((normalized) => {
+      const imageUrls = mergeImageUrls(
+        [normalized.imageUrl, ...normalized.imageUrls],
+        existingOfferImages.get(normalized.externalId),
+      );
+
+      return {
+        updateOne: {
+          filter: {
             source: normalized.source,
+            purchaseOption: normalized.purchaseOption,
             externalId: normalized.externalId,
           },
+          update: {
+            $set: {
+              purchaseOption: normalized.purchaseOption,
+              offerUrl: normalized.offerUrl,
+              imageUrl: imageUrls[0],
+              imageUrls,
+              fullName: normalized.fullName,
+              brand: normalized.brand,
+              model: normalized.model,
+              firstRegistrationDate: normalized.firstRegistrationDate,
+              registrationNumber: normalized.registrationNumber,
+              labelCode: normalized.labelCode,
+              details: normalized.details,
+              rawCreatedAt: normalized.rawCreatedAt,
+              rawUpdatedAt: normalized.rawUpdatedAt,
+              rawData: normalized.rawData,
+            },
+            $setOnInsert: {
+              source: normalized.source,
+              externalId: normalized.externalId,
+            },
+          },
+          upsert: true,
         },
-        upsert: true,
-      },
-    })),
+      };
+    }),
     { ordered: false },
   );
 
-  const externalIds = normalizedOffers.map((offer) => offer.externalId);
   const offers = await CarOffer.find(
     { source: "arval", purchaseOption, externalId: { $in: externalIds } },
     { _id: 1, externalId: 1 },
@@ -343,6 +355,32 @@ async function collectPurchaseOption(
   }
 
   return result;
+}
+
+async function getExistingOfferImages(
+  purchaseOption: PurchaseOption,
+  externalIds: string[],
+): Promise<Map<string, string[]>> {
+  const existingOffers = await CarOffer.find(
+    { source: "arval", purchaseOption, externalId: { $in: externalIds } },
+    { externalId: 1, imageUrl: 1, imageUrls: 1 },
+  ).lean();
+
+  return new Map(
+    existingOffers.map((offer) => [
+      offer.externalId,
+      mergeImageUrls([offer.imageUrl], offer.imageUrls),
+    ]),
+  );
+}
+
+function mergeImageUrls(
+  primary: Array<string | null | undefined>,
+  secondary?: Array<string | null | undefined>,
+): string[] {
+  return Array.from(
+    new Set([...primary, ...(secondary || [])].filter(Boolean)),
+  ) as string[];
 }
 
 async function recordCollectorRun(
