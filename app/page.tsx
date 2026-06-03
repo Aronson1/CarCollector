@@ -84,9 +84,13 @@ export default function Home() {
     nextPage = pagination.page,
     nextPageSize = pagination.pageSize,
     nextPurchaseOption = purchaseOption,
+    options: { clearMessage?: boolean; reportError?: boolean } = {},
   ) {
+    const { clearMessage = true, reportError = true } = options;
     setLoadState("loading");
-    setCollectorMessage("");
+    if (clearMessage) {
+      setCollectorMessage("");
+    }
 
     const params = new URLSearchParams();
     params.set("purchaseOption", nextPurchaseOption);
@@ -113,14 +117,14 @@ export default function Home() {
     params.set("pageSize", nextPageSize);
 
     try {
-      const response = await fetch(`/api/cars?${params.toString()}`, {
-        cache: "no-store",
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.message || "Could not load cars.");
-      }
+      const payload = await fetchJson<{
+        cars?: CarOfferView[];
+        listUpdatedAt?: string;
+        page?: number;
+        pageSize?: number | "all";
+        total?: number;
+        totalPages?: number;
+      }>(`/api/cars?${params.toString()}`, { cache: "no-store" });
 
       setCars(payload.cars || []);
       setPagination({
@@ -136,12 +140,16 @@ export default function Home() {
           : null,
       );
       setLoadState("idle");
+      return true;
     } catch (error) {
       console.error(error);
-      setCollectorMessage(
-        error instanceof Error ? error.message : "Nie udało się pobrać danych.",
-      );
+      if (reportError) {
+        setCollectorMessage(
+          getFriendlyErrorMessage(error, "Nie udało się pobrać danych."),
+        );
+      }
       setLoadState("error");
+      return false;
     }
   }
 
@@ -154,14 +162,12 @@ export default function Home() {
     if (brand) params.set("brand", brand);
 
     try {
-      const response = await fetch(`/api/cars/filters?${params.toString()}`, {
-        cache: "no-store",
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.message || "Could not load filters.");
-      }
+      const payload = await fetchJson<{
+        brands?: string[];
+        gearboxes?: string[];
+        fuelTypes?: string[];
+        models?: string[];
+      }>(`/api/cars/filters?${params.toString()}`, { cache: "no-store" });
 
       setFilterOptions({
         brands: payload.brands || [],
@@ -172,9 +178,7 @@ export default function Home() {
     } catch (error) {
       console.error(error);
       setCollectorMessage(
-        error instanceof Error
-          ? error.message
-          : "Nie udało się pobrać filtrów.",
+        getFriendlyErrorMessage(error, "Nie udało się pobrać filtrów."),
       );
     }
   }
@@ -185,31 +189,41 @@ export default function Home() {
     setCollectorMessage("");
 
     try {
-      const response = await fetch("/api/collector/run", {
+      const payload = await fetchJson<{
+        fetched?: number;
+        snapshotsCreated?: number;
+        skippedUnchanged?: number;
+      }>("/api/collector/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ purchaseOption: nextPurchaseOption }),
       });
-      const payload = await response.json();
+      setCollectorState("idle");
+      setCollectorPurchaseOption(null);
 
-      if (!response.ok) {
-        throw new Error(payload.message || "Collector run failed.");
+      let refreshed = true;
+      if (nextPurchaseOption === purchaseOption) {
+        refreshed = await loadCars(
+          filters,
+          pagination.page,
+          pagination.pageSize,
+          purchaseOption,
+          { clearMessage: false, reportError: false },
+        );
       }
 
       const label = getPurchaseOptionLabel(nextPurchaseOption).toLowerCase();
       setCollectorMessage(
-        `${label}: fetched ${payload.fetched}, snapshots ${payload.snapshotsCreated}, unchanged ${payload.skippedUnchanged}.`,
+        `${label}: pobrano ${payload.fetched ?? 0}, nowe snapshoty ${
+          payload.snapshotsCreated ?? 0
+        }, bez zmian ${payload.skippedUnchanged ?? 0}.${
+          refreshed ? "" : " Dane pobrane, ale odświeżenie listy nie powiodło się."
+        }`,
       );
-      setCollectorState("idle");
-      setCollectorPurchaseOption(null);
-
-      if (nextPurchaseOption === purchaseOption) {
-        await loadCars(filters, pagination.page, pagination.pageSize);
-      }
     } catch (error) {
       console.error(error);
       setCollectorMessage(
-        error instanceof Error ? error.message : "Collector run failed.",
+        getFriendlyErrorMessage(error, "Nie udało się pobrać ofert."),
       );
       setCollectorState("error");
       setCollectorPurchaseOption(null);
@@ -228,16 +242,14 @@ export default function Home() {
     setCollectorMessage("");
 
     try {
-      const response = await fetch(`/api/cars/${car.id}/watchlist`, {
+      const payload = await fetchJson<{
+        id?: string;
+        isWatchlisted?: boolean;
+      }>(`/api/cars/${car.id}/watchlist`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isWatchlisted: nextIsWatchlisted }),
       });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.message || "Could not update watchlist.");
-      }
 
       if (filters.watchlistedOnly && !nextIsWatchlisted) {
         setCars((current) => current.filter((item) => item.id !== car.id));
@@ -271,9 +283,10 @@ export default function Home() {
         ),
       );
       setCollectorMessage(
-        error instanceof Error
-          ? error.message
-          : "Nie udało się zaktualizować watchlisty.",
+        getFriendlyErrorMessage(
+          error,
+          "Nie udało się zaktualizować watchlisty.",
+        ),
       );
     }
   }
@@ -1252,6 +1265,61 @@ function createDefaultFilters() {
     downPaymentTo: "",
     sort: "newest",
   };
+}
+
+async function fetchJson<TPayload extends object>(
+  url: string,
+  init?: RequestInit,
+): Promise<TPayload> {
+  const response = await fetchWithRetry(url, init);
+  const payload = (await response.json().catch(() => ({}))) as TPayload;
+
+  if (!response.ok) {
+    throw new Error(getPayloadMessage(payload) || "Request failed.");
+  }
+
+  return payload;
+}
+
+function getPayloadMessage(payload: object): string | undefined {
+  return "message" in payload && typeof payload.message === "string"
+    ? payload.message
+    : undefined;
+}
+
+async function fetchWithRetry(
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    if (!isTransientFetchError(error)) {
+      throw error;
+    }
+
+    await wait(700);
+    return fetch(url, init);
+  }
+}
+
+function isTransientFetchError(error: unknown): boolean {
+  return (
+    error instanceof TypeError &&
+    /fetch|network|load failed/i.test(error.message)
+  );
+}
+
+function getFriendlyErrorMessage(error: unknown, fallback: string): string {
+  if (isTransientFetchError(error)) {
+    return "Nie udało się połączyć z serwerem. Spróbuj ponownie za chwilę.";
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function appendParam(params: URLSearchParams, key: string, value: string) {
