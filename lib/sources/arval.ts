@@ -40,6 +40,14 @@ export async function fetchArvalAnnouncements({
   return enrichAnnouncementsWithDetails(announcements, baseUrl, path);
 }
 
+export async function fetchArvalAnnouncementDetailsById(
+  id: string | number,
+): Promise<ArvalAnnouncement> {
+  const baseUrl = process.env.ARVAL_API_BASE_URL || defaultArvalBaseUrl;
+  const path = process.env.ARVAL_ANNOUNCEMENTS_PATH || "/api/Announcements/17";
+  return fetchArvalAnnouncementDetails(baseUrl, path, id);
+}
+
 async function enrichAnnouncementsWithDetails(
   announcements: ArvalAnnouncement[],
   baseUrl: string,

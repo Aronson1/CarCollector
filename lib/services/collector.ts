@@ -5,9 +5,12 @@ import {
   normalizeArvalAnnouncement,
   normalizeArvalNewCarOffer,
 } from "../prices";
-import { fetchArvalAnnouncements } from "../sources/arval";
+import {
+  fetchArvalAnnouncementDetailsById,
+  fetchArvalAnnouncements,
+} from "../sources/arval";
 import { fetchArvalNewCarOffers } from "../sources/arval-new";
-import type { PurchaseOption } from "../types";
+import type { ArvalAnnouncement, PurchaseOption } from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
 
 export type CollectorPurchaseOption = PurchaseOption | "all";
@@ -42,22 +45,50 @@ export async function backfillOfferImages(
   await connectToDatabase();
   await ensurePurchaseOptionMigration();
 
-  const normalizedOffers = (
-    await fetchArvalAnnouncements({ pageNumber, pageSize, purchaseOption })
-  ).map((announcement) =>
-    normalizeArvalAnnouncement(announcement, purchaseOption),
+  const offers = await CarOffer.find(
+    { source: "arval", purchaseOption },
+    { externalId: 1, imageUrl: 1, rawData: 1 },
+  )
+    .sort({ rawCreatedAt: -1, createdAt: -1, _id: -1 })
+    .skip((pageNumber - 1) * pageSize)
+    .limit(pageSize)
+    .lean();
+
+  const normalizedOffers = await mapWithConcurrency(
+    offers,
+    8,
+    async (offer) => {
+      const rawData = isArvalAnnouncement(offer.rawData)
+        ? offer.rawData
+        : ({ id: offer.externalId } as ArvalAnnouncement);
+
+      try {
+        const details = await fetchArvalAnnouncementDetailsById(offer.externalId);
+        return normalizeArvalAnnouncement(
+          mergeImageDetails(
+            rawData,
+            details,
+            offer.externalId,
+            offer.imageUrl || undefined,
+          ),
+          purchaseOption,
+        );
+      } catch {
+        return normalizeArvalAnnouncement(rawData, purchaseOption);
+      }
+    },
   );
 
   const result: ImageBackfillResult = {
     purchaseOption,
     pageNumber,
     pageSize,
-    fetched: normalizedOffers.length,
+    fetched: offers.length,
     matched: 0,
     modified: 0,
     manyImages: normalizedOffers.filter((offer) => offer.imageUrls.length > 1)
       .length,
-    hasMore: normalizedOffers.length === pageSize,
+    hasMore: offers.length === pageSize,
   };
 
   if (normalizedOffers.length === 0) {
@@ -86,6 +117,29 @@ export async function backfillOfferImages(
   result.matched = writeResult.matchedCount;
   result.modified = writeResult.modifiedCount;
   return result;
+}
+
+function isArvalAnnouncement(value: unknown): value is ArvalAnnouncement {
+  return Boolean(value && typeof value === "object" && "id" in value);
+}
+
+function mergeImageDetails(
+  announcement: ArvalAnnouncement,
+  details: ArvalAnnouncement,
+  externalId: string,
+  fallbackImageUrl?: string,
+): ArvalAnnouncement {
+  return {
+    ...details,
+    ...announcement,
+    id: announcement.id || externalId,
+    images:
+      details.images && details.images.length > 0
+        ? details.images
+        : announcement.images,
+    mainImage: announcement.mainImage || details.mainImage || fallbackImageUrl,
+    mainUrl: announcement.mainUrl || details.mainUrl,
+  };
 }
 
 export async function runCollector(
@@ -311,4 +365,29 @@ function sumRuns(
   key: "fetched" | "offersUpserted" | "snapshotsCreated" | "skippedUnchanged",
 ): number {
   return runs.reduce((total, run) => total + run[key], 0);
+}
+
+async function mapWithConcurrency<T, R>(
+  values: T[],
+  concurrency: number,
+  mapper: (value: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(values[index]);
+    }
+  }
+
+  const workers = Array.from(
+    { length: Math.min(concurrency, values.length) },
+    () => worker(),
+  );
+
+  await Promise.all(workers);
+  return results;
 }
