@@ -24,6 +24,8 @@ export interface GetCarsFilters {
   yearTo?: number;
   mileageFrom?: number;
   mileageTo?: number;
+  powerHpFrom?: number;
+  powerHpTo?: number;
   fuelType?: string;
   gearbox?: string;
   contractMonthsFrom?: number;
@@ -101,6 +103,7 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
     model?: { $regex: string; $options: string };
     "details.registrationYear"?: NumberRangeQuery;
     "details.mileage"?: NumberRangeQuery;
+    "details.powerHp"?: NumberRangeQuery;
     "details.fuelTypeLabel"?: { $regex: string; $options: string };
     "details.gearbox"?: { $regex: string; $options: string };
     "details.contractMonths"?: NumberRangeQuery;
@@ -131,6 +134,12 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
     "details.mileage",
     filters.mileageFrom,
     filters.mileageTo,
+  );
+  addNumberRangeQuery(
+    query,
+    "details.powerHp",
+    filters.powerHpFrom,
+    filters.powerHpTo,
   );
   addNumberRangeQuery(
     query,

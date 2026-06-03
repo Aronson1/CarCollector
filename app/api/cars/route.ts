@@ -21,6 +21,8 @@ export async function GET(request: Request) {
       yearTo: parseNumber(searchParams.get("yearTo")),
       mileageFrom: parseNumber(searchParams.get("mileageFrom")),
       mileageTo: parseNumber(searchParams.get("mileageTo")),
+      powerHpFrom: parseNumber(searchParams.get("powerHpFrom")),
+      powerHpTo: parseNumber(searchParams.get("powerHpTo")),
       fuelType: searchParams.get("fuelType") || undefined,
       gearbox: searchParams.get("gearbox") || undefined,
       contractMonthsFrom: parseNumber(searchParams.get("contractMonthsFrom")),

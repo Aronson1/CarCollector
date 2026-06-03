@@ -104,6 +104,8 @@ export default function Home() {
     appendParam(params, "yearTo", nextFilters.yearTo);
     appendParam(params, "mileageFrom", nextFilters.mileageFrom);
     appendParam(params, "mileageTo", nextFilters.mileageTo);
+    appendParam(params, "powerHpFrom", nextFilters.powerHpFrom);
+    appendParam(params, "powerHpTo", nextFilters.powerHpTo);
     if (nextFilters.fuelType) params.set("fuelType", nextFilters.fuelType);
     if (nextFilters.gearbox) params.set("gearbox", nextFilters.gearbox);
     appendParam(params, "contractMonthsFrom", nextFilters.contractMonthsFrom);
@@ -661,6 +663,18 @@ export default function Home() {
                 }
                 toLabel="Przebieg do"
                 toValue={filters.mileageTo}
+              />
+              <RangeInputs
+                fromLabel="Moc od"
+                fromValue={filters.powerHpFrom}
+                onFromChange={(value) =>
+                  setFilters((current) => ({ ...current, powerHpFrom: value }))
+                }
+                onToChange={(value) =>
+                  setFilters((current) => ({ ...current, powerHpTo: value }))
+                }
+                toLabel="Moc do"
+                toValue={filters.powerHpTo}
               />
               <Autocomplete
                 freeSolo
@@ -1255,6 +1269,8 @@ function createDefaultFilters() {
     yearTo: "",
     mileageFrom: "",
     mileageTo: "",
+    powerHpFrom: "",
+    powerHpTo: "",
     fuelType: "",
     gearbox: "",
     contractMonthsFrom: "",
