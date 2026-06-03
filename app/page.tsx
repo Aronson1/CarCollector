@@ -1267,7 +1267,7 @@ function createDefaultFilters() {
   };
 }
 
-async function fetchJson<TPayload extends { message?: string }>(
+async function fetchJson<TPayload extends object>(
   url: string,
   init?: RequestInit,
 ): Promise<TPayload> {
@@ -1275,10 +1275,16 @@ async function fetchJson<TPayload extends { message?: string }>(
   const payload = (await response.json().catch(() => ({}))) as TPayload;
 
   if (!response.ok) {
-    throw new Error(payload.message || "Request failed.");
+    throw new Error(getPayloadMessage(payload) || "Request failed.");
   }
 
   return payload;
+}
+
+function getPayloadMessage(payload: object): string | undefined {
+  return "message" in payload && typeof payload.message === "string"
+    ? payload.message
+    : undefined;
 }
 
 async function fetchWithRetry(
