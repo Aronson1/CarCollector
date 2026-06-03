@@ -4,12 +4,14 @@ const defaultArvalBaseUrl = "https://arval-prod-euw-appservice-portalapi.azurewe
 const detailConcurrency = 8;
 
 export interface FetchArvalAnnouncementsOptions {
+  includeDetails?: boolean;
   pageNumber?: number;
   pageSize?: number;
   purchaseOption?: PurchaseOption;
 }
 
 export async function fetchArvalAnnouncements({
+  includeDetails = true,
   pageNumber = 1,
   pageSize = 400,
   purchaseOption = "release",
@@ -37,7 +39,9 @@ export async function fetchArvalAnnouncements({
 
   const payload = await response.json();
   const announcements = payload?.announcements?.announcements || [];
-  return enrichAnnouncementsWithDetails(announcements, baseUrl, path);
+  return includeDetails
+    ? enrichAnnouncementsWithDetails(announcements, baseUrl, path)
+    : announcements;
 }
 
 export async function fetchArvalAnnouncementDetailsById(
