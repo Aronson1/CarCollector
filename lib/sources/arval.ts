@@ -4,11 +4,13 @@ const defaultArvalBaseUrl = "https://arval-prod-euw-appservice-portalapi.azurewe
 const detailConcurrency = 8;
 
 export interface FetchArvalAnnouncementsOptions {
+  pageNumber?: number;
   pageSize?: number;
   purchaseOption?: PurchaseOption;
 }
 
 export async function fetchArvalAnnouncements({
+  pageNumber = 1,
   pageSize = 400,
   purchaseOption = "release",
 }: FetchArvalAnnouncementsOptions = {}): Promise<ArvalAnnouncement[]> {
@@ -18,7 +20,7 @@ export async function fetchArvalAnnouncements({
 
   url.search = new URLSearchParams({
     orderBy: "createdAt|desc",
-    pageNumber: "1",
+    pageNumber: String(pageNumber),
     pageSize: String(pageSize),
     priceType: "net",
     purchaseOption,
