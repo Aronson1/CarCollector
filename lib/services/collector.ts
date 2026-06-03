@@ -32,6 +32,7 @@ export interface ImageBackfillResult {
   matched: number;
   modified: number;
   manyImages: number;
+  withEquipment: number;
   hasMore: boolean;
 }
 
@@ -88,6 +89,9 @@ export async function backfillOfferImages(
     modified: 0,
     manyImages: normalizedOffers.filter((offer) => offer.imageUrls.length > 1)
       .length,
+    withEquipment: normalizedOffers.filter(
+      (offer) => offer.equipmentItems.length > 0,
+    ).length,
     hasMore: offers.length === pageSize,
   };
 
@@ -107,6 +111,7 @@ export async function backfillOfferImages(
           $set: {
             imageUrl: normalized.imageUrl,
             imageUrls: normalized.imageUrls,
+            equipmentItems: normalized.equipmentItems,
           },
         },
       },
@@ -139,6 +144,10 @@ function mergeImageDetails(
         : announcement.images,
     mainImage: announcement.mainImage || details.mainImage || fallbackImageUrl,
     mainUrl: announcement.mainUrl || details.mainUrl,
+    equipments:
+      details.equipments && details.equipments.length > 0
+        ? details.equipments
+        : announcement.equipments,
   };
 }
 
@@ -232,16 +241,21 @@ async function collectPurchaseOption(
   }
 
   const externalIds = normalizedOffers.map((offer) => offer.externalId);
-  const existingOfferImages = await getExistingOfferImages(
+  const existingOfferEnrichment = await getExistingOfferEnrichment(
     purchaseOption,
     externalIds,
   );
 
   await CarOffer.bulkWrite(
     normalizedOffers.map((normalized) => {
-      const imageUrls = mergeImageUrls(
+      const existing = existingOfferEnrichment.get(normalized.externalId);
+      const imageUrls = mergeStringValues(
         [normalized.imageUrl, ...normalized.imageUrls],
-        existingOfferImages.get(normalized.externalId),
+        existing?.imageUrls,
+      );
+      const equipmentItems = mergeStringValues(
+        normalized.equipmentItems,
+        existing?.equipmentItems,
       );
 
       return {
@@ -257,6 +271,7 @@ async function collectPurchaseOption(
               offerUrl: normalized.offerUrl,
               imageUrl: imageUrls[0],
               imageUrls,
+              equipmentItems,
               fullName: normalized.fullName,
               brand: normalized.brand,
               model: normalized.model,
@@ -357,24 +372,32 @@ async function collectPurchaseOption(
   return result;
 }
 
-async function getExistingOfferImages(
+interface ExistingOfferEnrichment {
+  imageUrls: string[];
+  equipmentItems: string[];
+}
+
+async function getExistingOfferEnrichment(
   purchaseOption: PurchaseOption,
   externalIds: string[],
-): Promise<Map<string, string[]>> {
+): Promise<Map<string, ExistingOfferEnrichment>> {
   const existingOffers = await CarOffer.find(
     { source: "arval", purchaseOption, externalId: { $in: externalIds } },
-    { externalId: 1, imageUrl: 1, imageUrls: 1 },
+    { externalId: 1, imageUrl: 1, imageUrls: 1, equipmentItems: 1 },
   ).lean();
 
   return new Map(
     existingOffers.map((offer) => [
       offer.externalId,
-      mergeImageUrls([offer.imageUrl], offer.imageUrls),
+      {
+        imageUrls: mergeStringValues([offer.imageUrl], offer.imageUrls),
+        equipmentItems: mergeStringValues(offer.equipmentItems),
+      },
     ]),
   );
 }
 
-function mergeImageUrls(
+function mergeStringValues(
   primary: Array<string | null | undefined>,
   secondary?: Array<string | null | undefined>,
 ): string[] {

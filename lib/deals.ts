@@ -1,10 +1,27 @@
 import type { CarOfferView } from "./types";
 
 const scoreWeights = {
-  power: 0.5,
+  power: 0.4,
   price: 0.3,
-  year: 0.2,
+  equipment: 0.2,
+  year: 0.1,
 };
+
+const valuableEquipmentGroups = [
+  ["kamera", "camera", "park assist", "czujnik parkowania"],
+  ["tempomat", "adaptive cruise", "acc"],
+  ["lane", "asystent pasa", "utrzymania pasa"],
+  ["martwego pola", "blind spot"],
+  ["carplay", "android auto", "nawig"],
+  ["led", "matrix", "ksenon"],
+  ["podgrzew", "ogrzewanie foteli", "ogrzewane fotele"],
+  ["klimatyzacja automatyczna", "climatronic", "automatyczna klimatyzacja"],
+  ["keyless", "kessy", "bezkluczyk"],
+  ["elektrycznie sterowana pokrywa", "elektryczna pokrywa"],
+  ["hak"],
+  ["panoramiczny", "panorama"],
+  ["skór", "alcantara"],
+];
 
 interface Range {
   min: number;
@@ -39,10 +56,12 @@ function calculateDealScore(car: CarOfferView, stats: DealStats) {
     stats.powers,
     0,
   );
+  const equipmentFactor = scoreEquipment(car.equipmentItems);
   const score = Math.round(
     100 *
       (powerFactor * scoreWeights.power +
         priceFactor * scoreWeights.price +
+        equipmentFactor * scoreWeights.equipment +
         yearFactor * scoreWeights.year),
   );
 
@@ -52,6 +71,7 @@ function calculateDealScore(car: CarOfferView, stats: DealStats) {
       price: priceFactor,
       year: yearFactor,
       power: powerFactor,
+      equipment: equipmentFactor,
     }),
     factors: {
       price: roundFactor(priceFactor),
@@ -59,6 +79,7 @@ function calculateDealScore(car: CarOfferView, stats: DealStats) {
       mileage: 0,
       trend: 0,
       power: roundFactor(powerFactor),
+      equipment: roundFactor(equipmentFactor),
     },
   };
 }
@@ -120,6 +141,7 @@ function getDealReasons(
     price: number;
     year: number;
     power: number;
+    equipment: number;
   },
 ): string[] {
   const reasons: string[] = [];
@@ -131,8 +153,24 @@ function getDealReasons(
   if (factors.year >= 0.75 && car.details.registrationYear) {
     reasons.push("młody rocznik");
   }
+  if (factors.equipment >= 0.7) {
+    reasons.push("bogate wyposażenie");
+  }
 
   return reasons.length > 0 ? reasons : ["przeciętne parametry w wynikach"];
+}
+
+function scoreEquipment(items: string[]): number {
+  if (items.length === 0) return 0;
+
+  const normalizedItems = items.map((item) => item.toLocaleLowerCase("pl"));
+  const matchedGroups = valuableEquipmentGroups.filter((keywords) =>
+    keywords.some((keyword) =>
+      normalizedItems.some((item) => item.includes(keyword)),
+    ),
+  ).length;
+
+  return clamp01(matchedGroups / 8);
 }
 
 function roundFactor(value: number): number {

@@ -29,6 +29,7 @@ const carOfferSchema = new Schema(
     offerUrl: String,
     imageUrl: String,
     imageUrls: { type: [String], default: [] },
+    equipmentItems: { type: [String], default: [] },
     fullName: { type: String, required: true },
     brand: { type: String, required: true, index: true },
     model: { type: String, required: true, index: true },
