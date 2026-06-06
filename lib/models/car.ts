@@ -119,6 +119,19 @@ const pushSubscriptionSchema = new Schema(
   { timestamps: true },
 );
 
+const appSettingSchema = new Schema(
+  {
+    key: { type: String, required: true, unique: true, index: true },
+    dealPushThreshold: { type: Number, default: 60 },
+    dealScoreWeights: {
+      price: { type: Number, default: 0.45 },
+      power: { type: Number, default: 0.45 },
+      year: { type: Number, default: 0.1 },
+    },
+  },
+  { timestamps: true },
+);
+
 export type CarOfferDocument = InferSchemaType<typeof carOfferSchema> & {
   _id: mongoose.Types.ObjectId;
 };
@@ -134,6 +147,10 @@ export type CollectorRunDocument = InferSchemaType<typeof collectorRunSchema> & 
 export type PushSubscriptionDocument = InferSchemaType<
   typeof pushSubscriptionSchema
 > & {
+  _id: mongoose.Types.ObjectId;
+};
+
+export type AppSettingDocument = InferSchemaType<typeof appSettingSchema> & {
   _id: mongoose.Types.ObjectId;
 };
 
@@ -155,3 +172,7 @@ export const PushSubscription =
     "PushSubscription",
     pushSubscriptionSchema,
   );
+
+export const AppSetting =
+  (mongoose.models.AppSetting as Model<AppSettingDocument>) ||
+  mongoose.model<AppSettingDocument>("AppSetting", appSettingSchema);

@@ -405,11 +405,11 @@ async function getExistingOfferEnrichment(
 }
 
 function mergeStringValues(
-  primary: Array<string | null | undefined>,
-  secondary?: Array<string | null | undefined>,
+  primary?: Array<string | null | undefined> | null,
+  secondary?: Array<string | null | undefined> | null,
 ): string[] {
   return Array.from(
-    new Set([...primary, ...(secondary || [])].filter(Boolean)),
+    new Set([...(primary || []), ...(secondary || [])].filter(Boolean)),
   ) as string[];
 }
 

@@ -188,6 +188,9 @@ export default function WatchlistPage() {
             <Link className={navLinkClassName} href="/dashboard">
               Dashboard trendów
             </Link>
+            <Link className={navLinkClassName} href="/settings">
+              Ustawienia
+            </Link>
           </div>
         </header>
 

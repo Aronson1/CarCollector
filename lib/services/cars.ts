@@ -15,6 +15,7 @@ import type {
   PurchaseOption,
 } from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
+import { getAppSettings } from "./settings";
 import { Types } from "mongoose";
 
 export interface GetCarsFilters {
@@ -226,7 +227,8 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
       } satisfies CarOfferView;
     });
 
-  const scoredViews = applyDealScores(views);
+  const settings = await getAppSettings();
+  const scoredViews = applyDealScores(views, settings.dealScoreWeights);
   const filteredViews = scoredViews.filter((view) => {
     if (filters.changedOnly && !view.hasPriceChanged) return false;
     if (filters.availableOnly && !view.isAvailable) return false;

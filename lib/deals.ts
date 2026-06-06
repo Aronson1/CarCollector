@@ -1,6 +1,6 @@
-import type { CarOfferView } from "./types";
+import type { CarOfferView, DealScoreWeights } from "./types";
 
-const scoreWeights = {
+export const defaultDealScoreWeights: DealScoreWeights = {
   power: 0.45,
   price: 0.45,
   year: 0.1,
@@ -18,16 +18,23 @@ interface DealStats {
   powers: Range;
 }
 
-export function applyDealScores(cars: CarOfferView[]): CarOfferView[] {
+export function applyDealScores(
+  cars: CarOfferView[],
+  scoreWeights: DealScoreWeights = defaultDealScoreWeights,
+): CarOfferView[] {
   const stats = getDealStats(cars);
 
   return cars.map((car) => ({
     ...car,
-    dealScore: calculateDealScore(car, stats),
+    dealScore: calculateDealScore(car, stats, scoreWeights),
   }));
 }
 
-function calculateDealScore(car: CarOfferView, stats: DealStats) {
+function calculateDealScore(
+  car: CarOfferView,
+  stats: DealStats,
+  scoreWeights: DealScoreWeights,
+) {
   const priceFactor = scoreLowerIsBetter(currentPrice(car), stats.prices, 0);
   const yearFactor = scoreHigherIsBetter(
     car.details.registrationYear,

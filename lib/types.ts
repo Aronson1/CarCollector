@@ -24,6 +24,12 @@ export interface DealScore {
   };
 }
 
+export interface DealScoreWeights {
+  price: number;
+  power: number;
+  year: number;
+}
+
 export interface CarDetails {
   mileage?: number;
   annualMileage?: number;

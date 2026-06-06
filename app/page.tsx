@@ -57,11 +57,6 @@ export default function Home() {
   const firstCarRef = useRef<HTMLElement | null>(null);
   const shouldScrollToFirstCarRef = useRef(false);
   const [loadState, setLoadState] = useState<LoadState>("idle");
-  const [collectorState, setCollectorState] = useState<LoadState>("idle");
-  const [imageBackfillState, setImageBackfillState] =
-    useState<LoadState>("idle");
-  const [collectorPurchaseOption, setCollectorPurchaseOption] =
-    useState<PurchaseOption | null>(null);
   const [collectorMessage, setCollectorMessage] = useState("");
   const [listUpdatedAt, setListUpdatedAt] = useState<string | null>(null);
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
@@ -200,112 +195,6 @@ export default function Home() {
       setCollectorMessage(
         getFriendlyErrorMessage(error, "Nie udało się pobrać filtrów."),
       );
-    }
-  }
-
-  async function runCollector(nextPurchaseOption: PurchaseOption) {
-    setCollectorState("loading");
-    setCollectorPurchaseOption(nextPurchaseOption);
-    setCollectorMessage("");
-
-    try {
-      const payload = await fetchJson<{
-        fetched?: number;
-        snapshotsCreated?: number;
-        skippedUnchanged?: number;
-      }>("/api/collector/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ purchaseOption: nextPurchaseOption }),
-      });
-      setCollectorState("idle");
-      setCollectorPurchaseOption(null);
-
-      let refreshed = true;
-      if (nextPurchaseOption === purchaseOption) {
-        refreshed = await loadCars(
-          filters,
-          pagination.page,
-          pagination.pageSize,
-          purchaseOption,
-          { clearMessage: false, reportError: false },
-        );
-      }
-
-      const label = getPurchaseOptionLabel(nextPurchaseOption).toLowerCase();
-      setCollectorMessage(
-        `${label}: pobrano ${payload.fetched ?? 0}, nowe snapshoty ${
-          payload.snapshotsCreated ?? 0
-        }, bez zmian ${payload.skippedUnchanged ?? 0}.${
-          refreshed ? "" : " Dane pobrane, ale odświeżenie listy nie powiodło się."
-        }`,
-      );
-    } catch (error) {
-      console.error(error);
-      setCollectorMessage(
-        getFriendlyErrorMessage(error, "Nie udało się pobrać ofert."),
-      );
-      setCollectorState("error");
-      setCollectorPurchaseOption(null);
-    }
-  }
-
-  async function backfillSaleImages() {
-    setImageBackfillState("loading");
-    setCollectorMessage("");
-
-    try {
-      const pageSize = 50;
-      let pageNumber = 1;
-      let fetched = 0;
-      let modified = 0;
-      let manyImages = 0;
-      let withEquipment = 0;
-      let hasMore = true;
-
-      while (hasMore) {
-        const payload = await fetchJson<{
-          fetched?: number;
-          modified?: number;
-          manyImages?: number;
-          withEquipment?: number;
-          hasMore?: boolean;
-        }>("/api/collector/run", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            mode: "images",
-            purchaseOption: "sale",
-            pageNumber,
-            pageSize,
-          }),
-        });
-
-        fetched += payload.fetched ?? 0;
-        modified += payload.modified ?? 0;
-        manyImages += payload.manyImages ?? 0;
-        withEquipment += payload.withEquipment ?? 0;
-        hasMore = Boolean(payload.hasMore);
-        pageNumber += 1;
-      }
-
-      if (purchaseOption === "sale") {
-        await loadCars(filters, pagination.page, pagination.pageSize, purchaseOption, {
-          clearMessage: false,
-          reportError: false,
-        });
-      }
-
-      setCollectorMessage(
-        `Zakup używane: sprawdzono ${fetched} ofert, zaktualizowano ${modified}, galerie z wieloma zdjęciami ${manyImages}, wyposażenie ${withEquipment}.`,
-      );
-      setImageBackfillState("idle");
-    } catch (error) {
-      console.error(error);
-      setCollectorMessage(
-        getFriendlyErrorMessage(error, "Nie udało się uzupełnić galerii zdjęć."),
-      );
-      setImageBackfillState("error");
     }
   }
 
@@ -598,38 +487,12 @@ export default function Home() {
               >
                 Dashboard trendów
               </Link>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:gap-2">
-              {purchaseOptions.map((option) => (
-                <button
-                  className={`min-h-12 rounded px-4 py-3 text-sm font-semibold leading-tight transition disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-10 sm:py-2 ${
-                    purchaseOption === option
-                      ? "bg-cyan-400 text-slate-950 hover:bg-cyan-300"
-                      : "border border-cyan-400 text-cyan-100 hover:bg-cyan-400/10"
-                  }`}
-                  disabled={collectorState === "loading"}
-                  key={option}
-                  onClick={() => runCollector(option)}
-                  type="button"
-                >
-                  {collectorPurchaseOption === option
-                    ? `Pobieranie ${getPurchaseOptionShortLabel(option).toLowerCase()}...`
-                    : `Pobierz ${getPurchaseOptionShortLabel(option).toLowerCase()}`}
-                </button>
-              ))}
-              <button
-                className="min-h-12 rounded border border-slate-700 px-4 py-3 text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-10 sm:py-2"
-                disabled={
-                  collectorState === "loading" ||
-                  imageBackfillState === "loading"
-                }
-                onClick={backfillSaleImages}
-                type="button"
+              <Link
+                className="min-h-12 rounded border border-slate-700 px-4 py-3 text-center text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100"
+                href="/settings"
               >
-                {imageBackfillState === "loading"
-                  ? "Uzupełnianie galerii..."
-                  : "Galerie zakup używane"}
-              </button>
+                Ustawienia
+              </Link>
             </div>
           </div>
         </header>
@@ -919,7 +782,7 @@ export default function Home() {
         {(collectorMessage || loadState === "error") && (
           <div
             className={`rounded border px-4 py-3 text-sm ${
-              collectorState === "error" || loadState === "error"
+              loadState === "error"
                 ? "border-red-500/40 bg-red-500/10 text-red-100"
                 : "border-cyan-400/40 bg-cyan-400/10 text-cyan-100"
             }`}
@@ -1635,12 +1498,6 @@ function getPurchaseOptionLabel(purchaseOption: PurchaseOption) {
   if (purchaseOption === "sale") return "Zakup używane";
   if (purchaseOption === "newRelease") return "Najem nowe";
   return "Najem używane";
-}
-
-function getPurchaseOptionShortLabel(purchaseOption: PurchaseOption) {
-  if (purchaseOption === "sale") return "zakup używane";
-  if (purchaseOption === "newRelease") return "najem nowe";
-  return "najem używane";
 }
 
 function getPriceLabel(purchaseOption: PurchaseOption) {

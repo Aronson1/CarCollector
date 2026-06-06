@@ -3,8 +3,7 @@ import { connectToDatabase } from "../db";
 import { CarOffer, PushSubscription } from "../models/car";
 import type { CarOfferView } from "../types";
 import { getCars } from "./cars";
-
-const USED_RENTAL_DEAL_PUSH_THRESHOLD = 60;
+import { getAppSettings } from "./settings";
 
 interface BrowserPushSubscription {
   endpoint?: unknown;
@@ -60,13 +59,14 @@ export async function sendUsedRentalDealPushNotifications(): Promise<number> {
     return 0;
   }
 
+  const settings = await getAppSettings();
   const { cars } = await getCars({
     purchaseOption: "release",
     pageSize: "all",
     sort: "dealScoreDesc",
   });
   const candidates = cars.filter(
-    (car) => (car.dealScore?.score ?? 0) > USED_RENTAL_DEAL_PUSH_THRESHOLD,
+    (car) => (car.dealScore?.score ?? 0) >= settings.dealPushThreshold,
   );
 
   if (candidates.length === 0) {
