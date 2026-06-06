@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { PwaRegister } from "./pwa-register";
+import { RouteTransitionIndicator } from "./route-transition-indicator";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -29,6 +30,7 @@ export default function RootLayout({
   return (
     <html lang="pl">
       <body>
+        <RouteTransitionIndicator />
         {children}
         <PwaRegister />
       </body>

@@ -120,6 +120,11 @@ test("maps an Arval sale announcement into a separate offer shape", () => {
     {
       id: 42,
       offerUrl: "https://example.com/offers/42",
+      mainUrl: "https://example.com/main.jpg",
+      images: [
+        { uri: "https://example.com/side.jpg", order: 2 },
+        { uri: "https://example.com/front.jpg", order: 1 },
+      ],
       trim: "Volvo XC60 Momentum",
       make: "Volvo",
       model: "XC60",
@@ -131,6 +136,12 @@ test("maps an Arval sale announcement into a separate offer shape", () => {
   assert.equal(offer.source, "arval");
   assert.equal(offer.purchaseOption, "sale");
   assert.equal(offer.externalId, "42");
+  assert.equal(offer.imageUrl, "https://example.com/main.jpg");
+  assert.deepEqual(offer.imageUrls, [
+    "https://example.com/main.jpg",
+    "https://example.com/front.jpg",
+    "https://example.com/side.jpg",
+  ]);
   assert.deepEqual(offer.prices, [109674]);
 });
 

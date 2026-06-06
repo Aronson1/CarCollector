@@ -10,7 +10,7 @@ import {
   fetchArvalAnnouncements,
 } from "../sources/arval";
 import { fetchArvalNewCarOffers } from "../sources/arval-new";
-import type { ArvalAnnouncement, PurchaseOption } from "../types";
+import type { ArvalAnnouncement, CarDetails, PurchaseOption } from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
 import { sendUsedRentalDealPushNotifications } from "./push-notifications";
 
@@ -140,6 +140,8 @@ function mergeImageDetails(
     ...details,
     ...announcement,
     id: announcement.id || externalId,
+    horsePower: announcement.horsePower ?? details.horsePower,
+    power: announcement.power ?? details.power,
     images:
       details.images && details.images.length > 0
         ? details.images
@@ -228,7 +230,7 @@ async function collectPurchaseOption(
         )
       : (
           await fetchArvalAnnouncements({
-            includeDetails: false,
+            includeDetails: purchaseOption === "sale",
             purchaseOption,
           })
         ).map((announcement) =>
@@ -264,6 +266,8 @@ async function collectPurchaseOption(
         normalized.equipmentItems,
         existing?.equipmentItems,
       );
+      const details = mergeDetails(normalized.details, existing?.details);
+      const rawData = mergeRawData(normalized.rawData, existing?.rawData);
 
       return {
         updateOne: {
@@ -285,10 +289,10 @@ async function collectPurchaseOption(
               firstRegistrationDate: normalized.firstRegistrationDate,
               registrationNumber: normalized.registrationNumber,
               labelCode: normalized.labelCode,
-              details: normalized.details,
+              details,
               rawCreatedAt: normalized.rawCreatedAt,
               rawUpdatedAt: normalized.rawUpdatedAt,
-              rawData: normalized.rawData,
+              rawData,
             },
             $setOnInsert: {
               source: normalized.source,
@@ -304,7 +308,7 @@ async function collectPurchaseOption(
 
   const offers = await CarOffer.find(
     { source: "arval", purchaseOption, externalId: { $in: externalIds } },
-    { _id: 1, externalId: 1 },
+    { _id: 1, externalId: 1, rawData: 1 },
   ).lean();
   const offerByExternalId = new Map(
     offers.map((offer) => [offer.externalId, offer]),
@@ -347,7 +351,7 @@ async function collectPurchaseOption(
           update: {
             $set: {
               rawUpdatedAt: normalized.rawUpdatedAt,
-              rawData: normalized.rawData,
+              rawData: mergeRawData(normalized.rawData, previousSnapshot.rawData),
               purchaseOption: normalized.purchaseOption,
             },
           },
@@ -363,7 +367,7 @@ async function collectPurchaseOption(
       fetchedAt,
       rawUpdatedAt: normalized.rawUpdatedAt,
       prices: normalized.prices,
-      rawData: normalized.rawData,
+      rawData: mergeRawData(normalized.rawData, offer.rawData),
     });
   }
 
@@ -382,6 +386,10 @@ async function collectPurchaseOption(
 interface ExistingOfferEnrichment {
   imageUrls: string[];
   equipmentItems: string[];
+  details?: {
+    powerHp?: number | null;
+  };
+  rawData?: unknown;
 }
 
 async function getExistingOfferEnrichment(
@@ -390,7 +398,14 @@ async function getExistingOfferEnrichment(
 ): Promise<Map<string, ExistingOfferEnrichment>> {
   const existingOffers = await CarOffer.find(
     { source: "arval", purchaseOption, externalId: { $in: externalIds } },
-    { externalId: 1, imageUrl: 1, imageUrls: 1, equipmentItems: 1 },
+    {
+      externalId: 1,
+      imageUrl: 1,
+      imageUrls: 1,
+      equipmentItems: 1,
+      details: 1,
+      rawData: 1,
+    },
   ).lean();
 
   return new Map(
@@ -399,9 +414,44 @@ async function getExistingOfferEnrichment(
       {
         imageUrls: mergeStringValues([offer.imageUrl], offer.imageUrls),
         equipmentItems: mergeStringValues(offer.equipmentItems),
+        details: offer.details || undefined,
+        rawData: offer.rawData,
       },
     ]),
   );
+}
+
+function mergeDetails(
+  normalized: CarDetails,
+  existing?: {
+    powerHp?: number | null;
+  },
+): CarDetails {
+  return {
+    ...normalized,
+    powerHp: normalized.powerHp ?? existing?.powerHp ?? undefined,
+  };
+}
+
+function mergeRawData(normalized: unknown, existing: unknown): unknown {
+  if (
+    !normalized ||
+    typeof normalized !== "object" ||
+    !existing ||
+    typeof existing !== "object"
+  ) {
+    return normalized;
+  }
+
+  const next = normalized as ArvalAnnouncement;
+  const previous = existing as ArvalAnnouncement;
+
+  return {
+    ...previous,
+    ...next,
+    horsePower: next.horsePower ?? previous.horsePower,
+    power: next.power ?? previous.power,
+  };
 }
 
 function mergeStringValues(

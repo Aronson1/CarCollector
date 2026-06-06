@@ -79,6 +79,8 @@ function mergeAnnouncementDetails(
   return {
     ...details,
     ...announcement,
+    horsePower: announcement.horsePower ?? details.horsePower,
+    power: announcement.power ?? details.power,
     images:
       details.images && details.images.length > 0
         ? details.images

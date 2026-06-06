@@ -13,6 +13,7 @@
     "db:local": "powershell -ExecutionPolicy Bypass -File scripts/start-local-mongo.ps1",
     "lint": "eslint .",
     "test": "node --test --experimental-strip-types --experimental-test-isolation=none tests/*.test.ts",
+    "power:backfill": "node scripts/backfill-missing-power.mjs",
     "images:backfill": "node scripts/backfill-legacy-images.mjs",
     "migrate:legacy": "node scripts/migrate-legacy-cars.mjs"
   },
