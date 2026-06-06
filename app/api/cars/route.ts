@@ -80,6 +80,8 @@ function parseSort(value: string | null) {
     value === "oldest" ||
     value === "priceAsc" ||
     value === "priceDesc" ||
+    value === "powerAsc" ||
+    value === "powerDesc" ||
     value === "deltaAsc" ||
     value === "deltaDesc" ||
     value === "dealScoreDesc"

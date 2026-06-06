@@ -41,6 +41,8 @@ const carOfferSchema = new Schema(
     rawCreatedAt: Date,
     rawUpdatedAt: Date,
     rawData: Schema.Types.Mixed,
+    dealPushNotifiedAt: Date,
+    dealPushNotifiedScore: Number,
   },
   { timestamps: true },
 );
@@ -95,12 +97,27 @@ const collectorRunSchema = new Schema(
     offersUpserted: { type: Number, default: 0 },
     snapshotsCreated: { type: Number, default: 0 },
     skippedUnchanged: { type: Number, default: 0 },
+    dealPushNotificationsSent: { type: Number, default: 0 },
     message: String,
   },
   { timestamps: true },
 );
 
 collectorRunSchema.index({ purchaseOption: 1, finishedAt: -1 });
+
+const pushSubscriptionSchema = new Schema(
+  {
+    endpoint: { type: String, required: true, unique: true, index: true },
+    expirationTime: Number,
+    keys: {
+      p256dh: { type: String, required: true },
+      auth: { type: String, required: true },
+    },
+    userAgent: String,
+    lastSeenAt: { type: Date, required: true, default: Date.now },
+  },
+  { timestamps: true },
+);
 
 export type CarOfferDocument = InferSchemaType<typeof carOfferSchema> & {
   _id: mongoose.Types.ObjectId;
@@ -111,6 +128,12 @@ export type PriceSnapshotDocument = InferSchemaType<typeof priceSnapshotSchema> 
 };
 
 export type CollectorRunDocument = InferSchemaType<typeof collectorRunSchema> & {
+  _id: mongoose.Types.ObjectId;
+};
+
+export type PushSubscriptionDocument = InferSchemaType<
+  typeof pushSubscriptionSchema
+> & {
   _id: mongoose.Types.ObjectId;
 };
 
@@ -125,3 +148,10 @@ export const PriceSnapshot =
 export const CollectorRun =
   (mongoose.models.CollectorRun as Model<CollectorRunDocument>) ||
   mongoose.model<CollectorRunDocument>("CollectorRun", collectorRunSchema);
+
+export const PushSubscription =
+  (mongoose.models.PushSubscription as Model<PushSubscriptionDocument>) ||
+  mongoose.model<PushSubscriptionDocument>(
+    "PushSubscription",
+    pushSubscriptionSchema,
+  );

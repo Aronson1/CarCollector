@@ -71,7 +71,7 @@ test("rewards higher power when other deal factors are comparable", () => {
   assert.ok(stronger.dealScore.reasons.includes("wysoka moc"));
 });
 
-test("rewards valuable equipment when other deal factors are comparable", () => {
+test("does not use equipment in deal scoring", () => {
   const [equipped, basic] = applyDealScores([
     createCar({
       fullName: "Equipped car",
@@ -96,9 +96,13 @@ test("rewards valuable equipment when other deal factors are comparable", () => 
 
   assert.ok(equipped.dealScore);
   assert.ok(basic.dealScore);
-  assert.ok(equipped.dealScore.score > basic.dealScore.score);
+  assert.equal(equipped.dealScore.score, basic.dealScore.score);
+  assert.equal(equipped.dealScore.factors.equipment, 0);
+  assert.equal(basic.dealScore.factors.equipment, 0);
   assert.ok(
-    equipped.dealScore.factors.equipment > basic.dealScore.factors.equipment,
+    !equipped.dealScore.reasons.some((reason) =>
+      reason.includes("wyposażenie"),
+    ),
   );
 });
 

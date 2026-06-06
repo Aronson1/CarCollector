@@ -12,6 +12,7 @@ import {
 import { fetchArvalNewCarOffers } from "../sources/arval-new";
 import type { ArvalAnnouncement, PurchaseOption } from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
+import { sendUsedRentalDealPushNotifications } from "./push-notifications";
 
 export type CollectorPurchaseOption = PurchaseOption | "all";
 
@@ -21,6 +22,7 @@ export interface CollectorRunResult {
   offersUpserted: number;
   snapshotsCreated: number;
   skippedUnchanged: number;
+  dealPushNotificationsSent?: number;
   runs?: CollectorRunResult[];
 }
 
@@ -170,6 +172,7 @@ export async function runCollector(
         offersUpserted: sumRuns(runs, "offersUpserted"),
         snapshotsCreated: sumRuns(runs, "snapshotsCreated"),
         skippedUnchanged: sumRuns(runs, "skippedUnchanged"),
+        dealPushNotificationsSent: sumRuns(runs, "dealPushNotificationsSent"),
         runs,
       };
 
@@ -197,6 +200,10 @@ async function runCollectorForPurchaseOption(
 
   try {
     const result = await collectPurchaseOption(purchaseOption);
+    if (purchaseOption === "release") {
+      result.dealPushNotificationsSent =
+        await sendUsedRentalDealPushNotifications();
+    }
     await recordCollectorRun(startedAt, result, "success");
     return result;
   } catch (error) {
@@ -421,15 +428,21 @@ async function recordCollectorRun(
     offersUpserted: result.offersUpserted,
     snapshotsCreated: result.snapshotsCreated,
     skippedUnchanged: result.skippedUnchanged,
+    dealPushNotificationsSent: result.dealPushNotificationsSent || 0,
     message,
   });
 }
 
 function sumRuns(
   runs: CollectorRunResult[],
-  key: "fetched" | "offersUpserted" | "snapshotsCreated" | "skippedUnchanged",
+  key:
+    | "fetched"
+    | "offersUpserted"
+    | "snapshotsCreated"
+    | "skippedUnchanged"
+    | "dealPushNotificationsSent",
 ): number {
-  return runs.reduce((total, run) => total + run[key], 0);
+  return runs.reduce((total, run) => total + (run[key] || 0), 0);
 }
 
 async function mapWithConcurrency<T, R>(

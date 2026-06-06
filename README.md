@@ -42,10 +42,13 @@ Deploy the Next.js app to Vercel and configure:
 - optional `ARVAL_API_BASE_URL`
 - optional `ARVAL_ANNOUNCEMENTS_PATH`
 - optional `ARVAL_NEW_CARS_URL`
+- optional `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` for browser push alerts
 
 `vercel.json` schedules the collector once per day at `08:00 UTC`.
 
 Vercel Cron invokes `GET /api/collector/run` and sends `Authorization: Bearer <CRON_SECRET>` automatically when `CRON_SECRET` is configured in the Vercel project environment variables.
+
+Push alerts notify subscribed browsers once per used rental offer when its deal score is above 60. Generate VAPID keys with `npx web-push generate-vapid-keys` and set both keys in the Vercel project environment variables.
 
 For MongoDB Atlas:
 

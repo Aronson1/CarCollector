@@ -44,6 +44,8 @@ export interface GetCarsFilters {
     | "oldest"
     | "priceAsc"
     | "priceDesc"
+    | "powerAsc"
+    | "powerDesc"
     | "deltaAsc"
     | "deltaDesc"
     | "dealScoreDesc";
@@ -338,6 +340,14 @@ function sortCars(
       return price(right) - price(left);
     }
 
+    if (sort === "powerAsc") {
+      return power(left) - power(right);
+    }
+
+    if (sort === "powerDesc") {
+      return power(right) - power(left);
+    }
+
     if (sort === "deltaAsc") {
       return comparePriceDelta(left, right, "asc");
     }
@@ -396,6 +406,10 @@ function timestamp(car: CarOfferView): number {
 function price(car: CarOfferView): number {
   const currentPrice = car.latestPrices.find((value) => value > 0);
   return currentPrice ?? Number.MAX_SAFE_INTEGER;
+}
+
+function power(car: CarOfferView): number {
+  return car.details.powerHp ?? 0;
 }
 
 function dealScore(car: CarOfferView): number {

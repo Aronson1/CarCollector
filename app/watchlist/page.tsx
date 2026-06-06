@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { PointerEvent } from "react";
 import Link from "next/link";
 import LinearProgress from "@mui/material/LinearProgress";
 import type { CarOfferView, PurchaseOption } from "@/lib/types";
@@ -21,6 +22,7 @@ export default function WatchlistPage() {
     images: string[];
     index: number;
   } | null>(null);
+  const previewSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
 
   async function loadWatchlist(nextPurchaseOption = purchaseOption) {
     setLoadState("loading");
@@ -123,6 +125,44 @@ export default function WatchlistPage() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewImage]);
+
+  function handlePreviewPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!previewImage || previewImage.images.length < 2) {
+      return;
+    }
+
+    previewSwipeStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePreviewPointerUp(event: PointerEvent<HTMLDivElement>) {
+    const swipeStart = previewSwipeStartRef.current;
+    previewSwipeStartRef.current = null;
+
+    if (!swipeStart || !previewImage || previewImage.images.length < 2) {
+      return;
+    }
+
+    const deltaX = event.clientX - swipeStart.x;
+    const deltaY = event.clientY - swipeStart.y;
+    const isHorizontalSwipe =
+      Math.abs(deltaX) >= 48 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
+
+    if (!isHorizontalSwipe) {
+      return;
+    }
+
+    setPreviewImage((current) =>
+      current ? movePreviewImage(current, deltaX > 0 ? -1 : 1) : current,
+    );
+  }
+
+  function handlePreviewPointerCancel() {
+    previewSwipeStartRef.current = null;
+  }
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -349,12 +389,20 @@ export default function WatchlistPage() {
                 </button>
               </div>
             </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              alt={previewImage.alt}
-              className="max-h-[calc(100vh-6rem)] w-full rounded object-contain"
-              src={previewImage.images[previewImage.index]}
-            />
+            <div
+              className="touch-pan-y select-none"
+              onPointerCancel={handlePreviewPointerCancel}
+              onPointerDown={handlePreviewPointerDown}
+              onPointerUp={handlePreviewPointerUp}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt={previewImage.alt}
+                className="max-h-[calc(100vh-6rem)] w-full rounded object-contain"
+                draggable={false}
+                src={previewImage.images[previewImage.index]}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -371,6 +419,10 @@ function CarImageGallery({
   images: string[];
   onPreview: (index: number) => void;
 }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const gallerySwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const ignoreNextClickRef = useRef(false);
+
   if (images.length === 0) {
     return (
       <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded bg-slate-800">
@@ -381,24 +433,97 @@ function CarImageGallery({
     );
   }
 
+  const safeActiveIndex = Math.min(activeIndex, images.length - 1);
+  const activeImage = images[safeActiveIndex] || images[0];
+
+  function moveGalleryImage(direction: -1 | 1) {
+    setActiveIndex(
+      (current) => (current + direction + images.length) % images.length,
+    );
+  }
+
+  function handleGalleryPointerDown(event: PointerEvent<HTMLButtonElement>) {
+    if (images.length < 2 || event.pointerType === "mouse") {
+      return;
+    }
+
+    gallerySwipeStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    ignoreNextClickRef.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleGalleryPointerUp(event: PointerEvent<HTMLButtonElement>) {
+    const swipeStart = gallerySwipeStartRef.current;
+    gallerySwipeStartRef.current = null;
+
+    if (!swipeStart || images.length < 2) {
+      return;
+    }
+
+    const deltaX = event.clientX - swipeStart.x;
+    const deltaY = event.clientY - swipeStart.y;
+    const isHorizontalSwipe =
+      Math.abs(deltaX) >= 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
+
+    if (!isHorizontalSwipe) {
+      return;
+    }
+
+    ignoreNextClickRef.current = true;
+    moveGalleryImage(deltaX > 0 ? -1 : 1);
+  }
+
+  function handleGalleryPointerCancel() {
+    gallerySwipeStartRef.current = null;
+  }
+
+  function handleGalleryPreviewClick(index: number) {
+    if (ignoreNextClickRef.current) {
+      ignoreNextClickRef.current = false;
+      return;
+    }
+
+    onPreview(index);
+  }
+
   return (
     <div className="grid gap-2">
       <button
         aria-label={`Powiększ zdjęcie: ${car.fullName}`}
-        className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded bg-slate-800"
-        onClick={() => onPreview(0)}
+        className="relative flex aspect-[4/3] touch-pan-y select-none items-center justify-center overflow-hidden rounded bg-slate-800"
+        onClick={() => handleGalleryPreviewClick(safeActiveIndex)}
+        onPointerCancel={handleGalleryPointerCancel}
+        onPointerDown={handleGalleryPointerDown}
+        onPointerUp={handleGalleryPointerUp}
         type="button"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           alt={car.fullName}
           className="h-full w-full object-cover transition duration-200 hover:scale-105"
-          src={images[0]}
+          draggable={false}
+          src={activeImage}
         />
         {images.length > 1 && (
-          <span className="absolute bottom-1.5 right-1.5 rounded bg-slate-950/85 px-2 py-1 text-xs font-semibold text-white">
-            {images.length} zdj.
-          </span>
+          <>
+            <span className="absolute bottom-1.5 right-1.5 rounded bg-slate-950/85 px-2 py-1 text-xs font-semibold text-white">
+              {safeActiveIndex + 1} / {images.length}
+            </span>
+            <span className="absolute bottom-2 left-2 flex max-w-[55%] gap-1 overflow-hidden">
+              {images.slice(0, 8).map((image, index) => (
+                <span
+                  aria-hidden="true"
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    index === safeActiveIndex ? "bg-white" : "bg-white/40"
+                  }`}
+                  key={`${image}-${index}`}
+                />
+              ))}
+            </span>
+          </>
         )}
       </button>
       {images.length > 1 && (
@@ -406,9 +531,13 @@ function CarImageGallery({
           {images.slice(1, 4).map((image, index) => (
             <button
               aria-label={`Powiększ zdjęcie ${index + 2}: ${car.fullName}`}
-              className="aspect-[4/3] overflow-hidden rounded bg-slate-800 ring-1 ring-slate-700 transition hover:ring-cyan-400"
+              className={`aspect-[4/3] overflow-hidden rounded bg-slate-800 ring-1 transition hover:ring-cyan-400 ${
+                safeActiveIndex === index + 1
+                  ? "ring-cyan-400"
+                  : "ring-slate-700"
+              }`}
               key={image}
-              onClick={() => onPreview(index + 1)}
+              onClick={() => setActiveIndex(index + 1)}
               type="button"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}

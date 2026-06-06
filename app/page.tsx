@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { PointerEvent } from "react";
 import Link from "next/link";
 import Autocomplete from "@mui/material/Autocomplete";
 import LinearProgress from "@mui/material/LinearProgress";
@@ -52,8 +53,13 @@ export default function Home() {
     images: string[];
     index: number;
   } | null>(null);
+  const previewSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const firstCarRef = useRef<HTMLElement | null>(null);
+  const shouldScrollToFirstCarRef = useRef(false);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [collectorState, setCollectorState] = useState<LoadState>("idle");
+  const [imageBackfillState, setImageBackfillState] =
+    useState<LoadState>("idle");
   const [collectorPurchaseOption, setCollectorPurchaseOption] =
     useState<PurchaseOption | null>(null);
   const [collectorMessage, setCollectorMessage] = useState("");
@@ -84,10 +90,21 @@ export default function Home() {
     nextPage = pagination.page,
     nextPageSize = pagination.pageSize,
     nextPurchaseOption = purchaseOption,
-    options: { clearMessage?: boolean; reportError?: boolean } = {},
+    options: {
+      clearMessage?: boolean;
+      reportError?: boolean;
+      scrollToFirstCar?: boolean;
+    } = {},
   ) {
-    const { clearMessage = true, reportError = true } = options;
+    const {
+      clearMessage = true,
+      reportError = true,
+      scrollToFirstCar = false,
+    } = options;
     setLoadState("loading");
+    if (scrollToFirstCar) {
+      shouldScrollToFirstCarRef.current = true;
+    }
     if (clearMessage) {
       setCollectorMessage("");
     }
@@ -144,6 +161,7 @@ export default function Home() {
       setLoadState("idle");
       return true;
     } catch (error) {
+      shouldScrollToFirstCarRef.current = false;
       console.error(error);
       if (reportError) {
         setCollectorMessage(
@@ -229,6 +247,65 @@ export default function Home() {
       );
       setCollectorState("error");
       setCollectorPurchaseOption(null);
+    }
+  }
+
+  async function backfillSaleImages() {
+    setImageBackfillState("loading");
+    setCollectorMessage("");
+
+    try {
+      const pageSize = 50;
+      let pageNumber = 1;
+      let fetched = 0;
+      let modified = 0;
+      let manyImages = 0;
+      let withEquipment = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        const payload = await fetchJson<{
+          fetched?: number;
+          modified?: number;
+          manyImages?: number;
+          withEquipment?: number;
+          hasMore?: boolean;
+        }>("/api/collector/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "images",
+            purchaseOption: "sale",
+            pageNumber,
+            pageSize,
+          }),
+        });
+
+        fetched += payload.fetched ?? 0;
+        modified += payload.modified ?? 0;
+        manyImages += payload.manyImages ?? 0;
+        withEquipment += payload.withEquipment ?? 0;
+        hasMore = Boolean(payload.hasMore);
+        pageNumber += 1;
+      }
+
+      if (purchaseOption === "sale") {
+        await loadCars(filters, pagination.page, pagination.pageSize, purchaseOption, {
+          clearMessage: false,
+          reportError: false,
+        });
+      }
+
+      setCollectorMessage(
+        `Zakup używane: sprawdzono ${fetched} ofert, zaktualizowano ${modified}, galerie z wieloma zdjęciami ${manyImages}, wyposażenie ${withEquipment}.`,
+      );
+      setImageBackfillState("idle");
+    } catch (error) {
+      console.error(error);
+      setCollectorMessage(
+        getFriendlyErrorMessage(error, "Nie udało się uzupełnić galerii zdjęć."),
+      );
+      setImageBackfillState("error");
     }
   }
 
@@ -354,6 +431,58 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewImage]);
 
+  function handlePreviewPointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (!previewImage || previewImage.images.length < 2) {
+      return;
+    }
+
+    previewSwipeStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handlePreviewPointerUp(event: PointerEvent<HTMLDivElement>) {
+    const swipeStart = previewSwipeStartRef.current;
+    previewSwipeStartRef.current = null;
+
+    if (!swipeStart || !previewImage || previewImage.images.length < 2) {
+      return;
+    }
+
+    const deltaX = event.clientX - swipeStart.x;
+    const deltaY = event.clientY - swipeStart.y;
+    const isHorizontalSwipe =
+      Math.abs(deltaX) >= 48 && Math.abs(deltaX) > Math.abs(deltaY) * 1.25;
+
+    if (!isHorizontalSwipe) {
+      return;
+    }
+
+    setPreviewImage((current) =>
+      current ? movePreviewImage(current, deltaX > 0 ? -1 : 1) : current,
+    );
+  }
+
+  function handlePreviewPointerCancel() {
+    previewSwipeStartRef.current = null;
+  }
+
+  useEffect(() => {
+    if (loadState !== "idle" || !shouldScrollToFirstCarRef.current) {
+      return;
+    }
+
+    shouldScrollToFirstCarRef.current = false;
+    requestAnimationFrame(() => {
+      firstCarRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [cars, loadState]);
+
   useEffect(() => {
     function updateScrollTopVisibility() {
       const hasScrollableContent =
@@ -375,7 +504,10 @@ export default function Home() {
     };
   }, [cars, selectedCarId, pagination.pageSize]);
 
-  const paginationControls = (
+  function renderPaginationControls(placement: "top" | "bottom") {
+    const shouldScrollToFirstCar = placement === "bottom";
+
+    return (
     <div className="flex flex-wrap items-center gap-2">
       <label className="flex h-10 items-center gap-2 rounded border border-slate-700 bg-slate-900 px-3 text-sm text-slate-200">
         Na stronie
@@ -388,7 +520,9 @@ export default function Home() {
               page: 1,
               pageSize: nextPageSize,
             }));
-            void loadCars(filters, 1, nextPageSize);
+            void loadCars(filters, 1, nextPageSize, purchaseOption, {
+              scrollToFirstCar: shouldScrollToFirstCar,
+            });
           }}
           value={pagination.pageSize}
         >
@@ -404,7 +538,9 @@ export default function Home() {
         disabled={pagination.page <= 1 || pagination.pageSize === "all"}
         onClick={() => {
           const nextPage = Math.max(1, pagination.page - 1);
-          void loadCars(filters, nextPage, pagination.pageSize);
+          void loadCars(filters, nextPage, pagination.pageSize, purchaseOption, {
+            scrollToFirstCar: shouldScrollToFirstCar,
+          });
         }}
         type="button"
       >
@@ -423,14 +559,17 @@ export default function Home() {
         }
         onClick={() => {
           const nextPage = Math.min(pagination.totalPages, pagination.page + 1);
-          void loadCars(filters, nextPage, pagination.pageSize);
+          void loadCars(filters, nextPage, pagination.pageSize, purchaseOption, {
+            scrollToFirstCar: shouldScrollToFirstCar,
+          });
         }}
         type="button"
       >
         Następna
       </button>
     </div>
-  );
+    );
+  }
   const priceLabel = getPriceLabel(purchaseOption);
 
   return (
@@ -478,6 +617,19 @@ export default function Home() {
                     : `Pobierz ${getPurchaseOptionShortLabel(option).toLowerCase()}`}
                 </button>
               ))}
+              <button
+                className="min-h-12 rounded border border-slate-700 px-4 py-3 text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-10 sm:py-2"
+                disabled={
+                  collectorState === "loading" ||
+                  imageBackfillState === "loading"
+                }
+                onClick={backfillSaleImages}
+                type="button"
+              >
+                {imageBackfillState === "loading"
+                  ? "Uzupełnianie galerii..."
+                  : "Galerie zakup używane"}
+              </button>
             </div>
           </div>
         </header>
@@ -606,6 +758,8 @@ export default function Home() {
               <option value="oldest">Najstarszy wpis</option>
               <option value="priceAsc">Cena rosnąco</option>
               <option value="priceDesc">Cena malejąco</option>
+              <option value="powerDesc">Moc malejąco</option>
+              <option value="powerAsc">Moc rosnąco</option>
               <option value="deltaAsc">Największy spadek ceny</option>
               <option value="deltaDesc">Największy wzrost ceny</option>
               <option value="dealScoreDesc">Najlepsze okazje</option>
@@ -795,16 +949,17 @@ export default function Home() {
                 </p>
               )}
             </div>
-            {paginationControls}
+            {renderPaginationControls("top")}
           </div>
 
-          {cars.length === 0 && loadState !== "loading" ? (
-            <div className="rounded border border-slate-800 bg-slate-900 p-6 text-sm text-slate-400">
-              Brak wyników.
-            </div>
-          ) : (
-            <div className="grid gap-3">
-              {cars.map((car) => {
+          <div className="relative min-h-24">
+            {cars.length === 0 && loadState !== "loading" ? (
+              <div className="rounded border border-slate-800 bg-slate-900 p-6 text-sm text-slate-400">
+                Brak wyników.
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {cars.map((car, index) => {
                 const isSelected = selectedCarId === car.id;
                 const hasChart = car.priceHistory.length > 1;
                 const carImages = getCarImages(car);
@@ -815,6 +970,7 @@ export default function Home() {
                       isSelected ? "border-cyan-400" : "border-slate-800"
                     }`}
                     key={car.id}
+                    ref={index === 0 ? firstCarRef : undefined}
                   >
                     <div className="grid gap-4 md:grid-cols-[150px_1fr_auto]">
                       <CarImageGallery
@@ -973,12 +1129,29 @@ export default function Home() {
                     )}
                   </article>
                 );
-              })}
-            </div>
-          )}
+                })}
+              </div>
+            )}
+            {loadState === "loading" && (
+              <div
+                aria-live="polite"
+                className="absolute inset-0 z-10 flex min-h-24 items-center justify-center rounded border border-cyan-400/30 bg-slate-950/75 px-4 backdrop-blur-sm"
+              >
+                <div className="flex w-full max-w-xs flex-col gap-3 rounded border border-slate-700 bg-slate-900/95 p-4 text-center shadow-2xl shadow-slate-950/40">
+                  <LinearProgress
+                    aria-label="Ładowanie listy aut"
+                    sx={loadingProgressSx}
+                  />
+                  <span className="text-sm font-semibold text-slate-100">
+                    Ładowanie listy aut...
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
           {cars.length > 0 && (
             <div className="flex justify-end border-t border-slate-800 pt-3">
-              {paginationControls}
+              {renderPaginationControls("bottom")}
             </div>
           )}
         </section>
@@ -1043,12 +1216,20 @@ export default function Home() {
                 </button>
               </div>
             </div>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              alt={previewImage.alt}
-              className="max-h-[calc(100vh-6rem)] w-full rounded object-contain"
-              src={previewImage.images[previewImage.index]}
-            />
+            <div
+              className="touch-pan-y select-none"
+              onPointerCancel={handlePreviewPointerCancel}
+              onPointerDown={handlePreviewPointerDown}
+              onPointerUp={handlePreviewPointerUp}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt={previewImage.alt}
+                className="max-h-[calc(100vh-6rem)] w-full rounded object-contain"
+                draggable={false}
+                src={previewImage.images[previewImage.index]}
+              />
+            </div>
           </div>
         </div>
       )}
@@ -1129,6 +1310,10 @@ function CarImageGallery({
   images: string[];
   onPreview: (index: number) => void;
 }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const gallerySwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const ignoreNextClickRef = useRef(false);
+
   if (images.length === 0) {
     return (
       <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded bg-slate-800">
@@ -1139,34 +1324,111 @@ function CarImageGallery({
     );
   }
 
+  const safeActiveIndex = Math.min(activeIndex, images.length - 1);
+  const activeImage = images[safeActiveIndex] || images[0];
+
+  function moveGalleryImage(direction: -1 | 1) {
+    setActiveIndex(
+      (current) => (current + direction + images.length) % images.length,
+    );
+  }
+
+  function handleGalleryPointerDown(event: PointerEvent<HTMLButtonElement>) {
+    if (images.length < 2 || event.pointerType === "mouse") {
+      return;
+    }
+
+    gallerySwipeStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    ignoreNextClickRef.current = false;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function handleGalleryPointerUp(event: PointerEvent<HTMLButtonElement>) {
+    const swipeStart = gallerySwipeStartRef.current;
+    gallerySwipeStartRef.current = null;
+
+    if (!swipeStart || images.length < 2) {
+      return;
+    }
+
+    const deltaX = event.clientX - swipeStart.x;
+    const deltaY = event.clientY - swipeStart.y;
+    const isHorizontalSwipe =
+      Math.abs(deltaX) >= 40 && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
+
+    if (!isHorizontalSwipe) {
+      return;
+    }
+
+    ignoreNextClickRef.current = true;
+    moveGalleryImage(deltaX > 0 ? -1 : 1);
+  }
+
+  function handleGalleryPointerCancel() {
+    gallerySwipeStartRef.current = null;
+  }
+
+  function handleGalleryPreviewClick(index: number) {
+    if (ignoreNextClickRef.current) {
+      ignoreNextClickRef.current = false;
+      return;
+    }
+
+    onPreview(index);
+  }
+
   return (
     <div className="grid gap-2">
       <button
         aria-label={`Powiększ zdjęcie: ${car.fullName}`}
-        className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded bg-slate-800"
-        onClick={() => onPreview(0)}
+        className="relative flex aspect-[4/3] touch-pan-y select-none items-center justify-center overflow-hidden rounded bg-slate-800"
+        onClick={() => handleGalleryPreviewClick(safeActiveIndex)}
+        onPointerCancel={handleGalleryPointerCancel}
+        onPointerDown={handleGalleryPointerDown}
+        onPointerUp={handleGalleryPointerUp}
         type="button"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           alt={car.fullName}
           className="h-full w-full object-cover transition duration-200 hover:scale-105"
-          src={images[0]}
+          draggable={false}
+          src={activeImage}
         />
         {images.length > 1 && (
-          <span className="absolute bottom-1.5 right-1.5 rounded bg-slate-950/85 px-2 py-1 text-xs font-semibold text-white">
-            {images.length} zdj.
-          </span>
+          <>
+            <span className="absolute bottom-1.5 right-1.5 rounded bg-slate-950/85 px-2 py-1 text-xs font-semibold text-white">
+              {safeActiveIndex + 1} / {images.length}
+            </span>
+            <span className="absolute bottom-2 left-2 flex max-w-[55%] gap-1 overflow-hidden">
+              {images.slice(0, 8).map((image, index) => (
+                <span
+                  aria-hidden="true"
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                    index === safeActiveIndex ? "bg-white" : "bg-white/40"
+                  }`}
+                  key={`${image}-${index}`}
+                />
+              ))}
+            </span>
+          </>
         )}
       </button>
       {images.length > 1 && (
-        <div className="grid grid-cols-3 gap-1">
+        <div className="grid grid-cols-4 gap-1 md:grid-cols-3">
           {images.slice(1, 4).map((image, index) => (
             <button
               aria-label={`Powiększ zdjęcie ${index + 2}: ${car.fullName}`}
-              className="aspect-[4/3] overflow-hidden rounded bg-slate-800 ring-1 ring-slate-700 transition hover:ring-cyan-400"
+              className={`relative aspect-[4/3] overflow-hidden rounded bg-slate-800 ring-1 transition hover:ring-cyan-400 ${
+                safeActiveIndex === index + 1
+                  ? "ring-cyan-400"
+                  : "ring-slate-700"
+              }`}
               key={image}
-              onClick={() => onPreview(index + 1)}
+              onClick={() => setActiveIndex(index + 1)}
               type="button"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1175,6 +1437,11 @@ function CarImageGallery({
                 className="h-full w-full object-cover"
                 src={image}
               />
+              {index === 2 && images.length > 4 && (
+                <span className="absolute inset-0 flex items-center justify-center bg-slate-950/65 text-xs font-semibold text-white">
+                  +{images.length - 4}
+                </span>
+              )}
             </button>
           ))}
         </div>
