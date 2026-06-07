@@ -1,4 +1,4 @@
-const CACHE_NAME = "car-collector-shell-v2";
+const CACHE_NAME = "car-collector-shell-v3";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -73,8 +73,8 @@ self.addEventListener("push", (event) => {
     data: {
       url: payload.url || "/",
     },
-    icon: "/icons/icon-192.png",
-    badge: "/icons/icon-192.png",
+    icon: "/icons/icon-512.png",
+    badge: "/icons/notification-badge-96.png",
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
