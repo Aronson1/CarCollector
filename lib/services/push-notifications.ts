@@ -21,6 +21,10 @@ interface DealPushPayload {
   tag: string;
 }
 
+interface SendDealPushOptions {
+  offerIds?: string[];
+}
+
 let webPushConfigured = false;
 
 export async function savePushSubscription(
@@ -54,19 +58,30 @@ export async function savePushSubscription(
   };
 }
 
-export async function sendUsedRentalDealPushNotifications(): Promise<number> {
+export async function sendUsedRentalDealPushNotifications(
+  options: SendDealPushOptions = {},
+): Promise<number> {
+  if (options.offerIds && options.offerIds.length === 0) {
+    return 0;
+  }
+
   if (!configureWebPush()) {
     return 0;
   }
 
   const settings = await getAppSettings();
+  const allowedOfferIds = options.offerIds
+    ? new Set(options.offerIds)
+    : undefined;
   const { cars } = await getCars({
     purchaseOption: "release",
     pageSize: "all",
     sort: "dealScoreDesc",
   });
   const candidates = cars.filter(
-    (car) => (car.dealScore?.score ?? 0) >= settings.dealPushThreshold,
+    (car) =>
+      (!allowedOfferIds || allowedOfferIds.has(car.id)) &&
+      (car.dealScore?.score ?? 0) >= settings.dealPushThreshold,
   );
 
   if (candidates.length === 0) {

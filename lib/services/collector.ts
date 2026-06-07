@@ -23,6 +23,7 @@ export interface CollectorRunResult {
   snapshotsCreated: number;
   skippedUnchanged: number;
   dealPushNotificationsSent?: number;
+  newOfferIds?: string[];
   runs?: CollectorRunResult[];
 }
 
@@ -204,7 +205,9 @@ async function runCollectorForPurchaseOption(
     const result = await collectPurchaseOption(purchaseOption);
     if (purchaseOption === "release") {
       result.dealPushNotificationsSent =
-        await sendUsedRentalDealPushNotifications();
+        await sendUsedRentalDealPushNotifications({
+          offerIds: result.newOfferIds || [],
+        });
     }
     await recordCollectorRun(startedAt, result, "success");
     return result;
@@ -253,6 +256,11 @@ async function collectPurchaseOption(
   const existingOfferEnrichment = await getExistingOfferEnrichment(
     purchaseOption,
     externalIds,
+  );
+  const newExternalIds = new Set(
+    normalizedOffers
+      .filter((offer) => !existingOfferEnrichment.has(offer.externalId))
+      .map((offer) => offer.externalId),
   );
 
   await CarOffer.bulkWrite(
@@ -310,6 +318,9 @@ async function collectPurchaseOption(
     { source: "arval", purchaseOption, externalId: { $in: externalIds } },
     { _id: 1, externalId: 1, rawData: 1 },
   ).lean();
+  result.newOfferIds = offers
+    .filter((offer) => newExternalIds.has(offer.externalId))
+    .map((offer) => String(offer._id));
   const offerByExternalId = new Map(
     offers.map((offer) => [offer.externalId, offer]),
   );
