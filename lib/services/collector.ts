@@ -231,14 +231,7 @@ async function collectPurchaseOption(
       ? (await fetchArvalNewCarOffers()).map((offer) =>
           normalizeArvalNewCarOffer(offer),
         )
-      : (
-          await fetchArvalAnnouncements({
-            includeDetails: purchaseOption === "sale",
-            purchaseOption,
-          })
-        ).map((announcement) =>
-          normalizeArvalAnnouncement(announcement, purchaseOption),
-        );
+      : await fetchAndNormalizeUsedArvalOffers(purchaseOption);
   const fetchedAt = new Date();
   const result: CollectorRunResult = {
     purchaseOption,
@@ -392,6 +385,73 @@ async function collectPurchaseOption(
   }
 
   return result;
+}
+
+async function fetchAndNormalizeUsedArvalOffers(
+  purchaseOption: Exclude<PurchaseOption, "newRelease">,
+): Promise<ReturnType<typeof normalizeArvalAnnouncement>[]> {
+  const announcements = await fetchArvalAnnouncements({
+    includeDetails: false,
+    purchaseOption,
+  });
+  const normalizedOffers = announcements.map((announcement) =>
+    normalizeArvalAnnouncement(announcement, purchaseOption),
+  );
+
+  if (normalizedOffers.length === 0) {
+    return normalizedOffers;
+  }
+
+  const existingOfferEnrichment = await getExistingOfferEnrichment(
+    purchaseOption,
+    normalizedOffers.map((offer) => offer.externalId),
+  );
+  const announcementByExternalId = new Map(
+    announcements.map((announcement) => [String(announcement.id), announcement]),
+  );
+  const enrichedOffers = await mapWithConcurrency(
+    normalizedOffers,
+    8,
+    async (offer) => {
+      const existing = existingOfferEnrichment.get(offer.externalId);
+      const needsGallery =
+        mergeStringValues(
+          [offer.imageUrl, ...offer.imageUrls],
+          existing?.imageUrls,
+        ).length <= 1;
+      const needsEquipment =
+        purchaseOption === "sale" &&
+        mergeStringValues(offer.equipmentItems, existing?.equipmentItems)
+          .length === 0;
+
+      if (!needsGallery && !needsEquipment) {
+        return offer;
+      }
+
+      const announcement = announcementByExternalId.get(offer.externalId);
+
+      if (!announcement) {
+        return offer;
+      }
+
+      try {
+        const details = await fetchArvalAnnouncementDetailsById(offer.externalId);
+        return normalizeArvalAnnouncement(
+          mergeImageDetails(
+            announcement,
+            details,
+            offer.externalId,
+            offer.imageUrl,
+          ),
+          purchaseOption,
+        );
+      } catch {
+        return offer;
+      }
+    },
+  );
+
+  return enrichedOffers;
 }
 
 interface ExistingOfferEnrichment {
