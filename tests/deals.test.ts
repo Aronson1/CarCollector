@@ -144,7 +144,9 @@ function createCar({
     latestFetchedAt: "2026-06-03T08:00:00.000Z",
     priceDelta,
     isAvailable: false,
+    availabilityHistory: [],
     hasPriceChanged: Boolean(priceDelta),
+    isWatchlisted: false,
     priceHistory: (
       priceHistory || [
         {

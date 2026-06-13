@@ -1,4 +1,15 @@
 {
+  "functions": {
+    "app/api/cars/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cars/filters/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/collector/run/route.ts": {
+      "maxDuration": 60
+    }
+  },
   "crons": [
     {
       "path": "/api/collector/run",

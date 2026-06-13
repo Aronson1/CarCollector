@@ -4,6 +4,10 @@ export type PurchaseOption = "release" | "sale" | "newRelease";
 
 export type PriceVector = number[];
 
+export type AvailabilityEventType = "firstSeen" | "returned" | "disappeared";
+
+export type AvailabilityStatus = "available" | "unavailable";
+
 export interface PriceDelta {
   amount: number;
   percent: number;
@@ -65,9 +69,22 @@ export interface CarOfferView {
   priceDelta?: PriceDelta;
   dealScore?: DealScore;
   isAvailable: boolean;
+  availableSince?: string;
+  unavailableSince?: string;
+  lastSeenAt?: string;
+  lastAvailabilityChangeAt?: string;
+  availabilityHistory: AvailabilityEventView[];
   hasPriceChanged: boolean;
   isWatchlisted: boolean;
   priceHistory: PriceSnapshotView[];
+}
+
+export interface AvailabilityEventView {
+  id: string;
+  purchaseOption: PurchaseOption;
+  eventType: AvailabilityEventType;
+  status: AvailabilityStatus;
+  eventAt: string;
 }
 
 export interface PriceSnapshotView {

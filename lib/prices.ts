@@ -156,7 +156,9 @@ export function normalizeArvalAnnouncement(
     labelCode: announcement.labelCode,
     details: {
       ...(announcement.details || {}),
-      powerHp: normalizeArvalPowerHp(announcement),
+      powerHp:
+        toPositiveNumber(announcement.details?.powerHp) ??
+        normalizeArvalPowerHp(announcement),
     },
     rawCreatedAt: announcement.createdAt ? new Date(announcement.createdAt) : undefined,
     rawUpdatedAt: announcement.updatedAt ? new Date(announcement.updatedAt) : undefined,

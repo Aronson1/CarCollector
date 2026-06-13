@@ -115,6 +115,21 @@ test("falls back to parsing power from trim when Arval power fields are missing"
   assert.equal(offer.details.powerHp, 150);
 });
 
+test("prefers stored detail power over parsing power from trim", () => {
+  const offer = normalizeArvalAnnouncement({
+    id: 45,
+    trim: "Skoda Octavia 2.0 TDI SCR 110kW DSG Style 5d",
+    make: "Skoda",
+    model: "Octavia",
+    details: {
+      powerHp: 184,
+    },
+    reLeasePriceNet: 1800,
+  });
+
+  assert.equal(offer.details.powerHp, 184);
+});
+
 test("maps an Arval sale announcement into a separate offer shape", () => {
   const offer = normalizeArvalAnnouncement(
     {

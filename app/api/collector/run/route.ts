@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { DatabaseUnavailableError } from "@/lib/db";
-import { backfillOfferImages, runCollector } from "@/lib/services/collector";
+import {
+  backfillOfferImages,
+  backfillOfferPower,
+  runCollector,
+} from "@/lib/services/collector";
 import type { PurchaseOption } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -30,6 +34,14 @@ export async function POST(request: Request) {
 
   if (body?.mode === "images") {
     return runImageBackfillRequest(
+      purchaseOption,
+      parsePositiveInteger(body.pageNumber, 1),
+      parsePageSize(body.pageSize, 30),
+    );
+  }
+
+  if (body?.mode === "power") {
+    return runPowerBackfillRequest(
       purchaseOption,
       parsePositiveInteger(body.pageNumber, 1),
       parsePageSize(body.pageSize, 30),
@@ -93,6 +105,38 @@ async function runImageBackfillRequest(
 
     return NextResponse.json(
       { message: "Image backfill failed." },
+      { status: 500 },
+    );
+  }
+}
+
+async function runPowerBackfillRequest(
+  purchaseOption: PurchaseOption,
+  pageNumber: number,
+  pageSize: number,
+) {
+  if (purchaseOption === "newRelease") {
+    return NextResponse.json(
+      { message: "Power backfill is only available for used offers." },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const result = await backfillOfferPower(
+      purchaseOption,
+      pageNumber,
+      pageSize,
+    );
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error(error);
+    if (error instanceof DatabaseUnavailableError) {
+      return NextResponse.json({ message: error.message }, { status: 503 });
+    }
+
+    return NextResponse.json(
+      { message: "Power backfill failed." },
       { status: 500 },
     );
   }

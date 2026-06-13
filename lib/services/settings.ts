@@ -66,7 +66,7 @@ export async function getAppSettings(): Promise<AppSettingsView> {
   const settings = await AppSetting.findOneAndUpdate(
     { key: settingsKey },
     { $setOnInsert: getDefaultSettingsDocument() },
-    { new: true, upsert: true },
+    { returnDocument: "after", upsert: true },
   ).lean();
 
   return mapSettings(settings);
@@ -100,7 +100,7 @@ export async function updateAppSettings(
       },
       $setOnInsert: { key: settingsKey },
     },
-    { new: true, upsert: true },
+    { returnDocument: "after", upsert: true },
   ).lean();
 
   return mapSettings(updated);

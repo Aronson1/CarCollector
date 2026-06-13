@@ -36,6 +36,11 @@ const carOfferSchema = new Schema(
     firstRegistrationDate: String,
     registrationNumber: String,
     labelCode: String,
+    isAvailable: { type: Boolean, default: true, index: true },
+    availableSince: Date,
+    unavailableSince: Date,
+    lastSeenAt: Date,
+    lastAvailabilityChangeAt: Date,
     isWatchlisted: { type: Boolean, default: false, index: true },
     details: { type: carDetailsSchema, default: {} },
     rawCreatedAt: Date,
@@ -77,6 +82,40 @@ const priceSnapshotSchema = new Schema(
 
 priceSnapshotSchema.index({ offerId: 1, fetchedAt: 1 });
 
+const availabilityEventSchema = new Schema(
+  {
+    offerId: {
+      type: Schema.Types.ObjectId,
+      ref: "CarOffer",
+      required: true,
+      index: true,
+    },
+    purchaseOption: {
+      type: String,
+      required: true,
+      enum: ["release", "sale", "newRelease"],
+      default: "release",
+      index: true,
+    },
+    eventType: {
+      type: String,
+      required: true,
+      enum: ["firstSeen", "returned", "disappeared"],
+      index: true,
+    },
+    status: {
+      type: String,
+      required: true,
+      enum: ["available", "unavailable"],
+      index: true,
+    },
+    eventAt: { type: Date, required: true, index: true },
+  },
+  { timestamps: true },
+);
+
+availabilityEventSchema.index({ offerId: 1, eventAt: 1 });
+
 const collectorRunSchema = new Schema(
   {
     purchaseOption: {
@@ -97,6 +136,8 @@ const collectorRunSchema = new Schema(
     offersUpserted: { type: Number, default: 0 },
     snapshotsCreated: { type: Number, default: 0 },
     skippedUnchanged: { type: Number, default: 0 },
+    availabilityEventsCreated: { type: Number, default: 0 },
+    offersMarkedUnavailable: { type: Number, default: 0 },
     dealPushNotificationsSent: { type: Number, default: 0 },
     message: String,
   },
@@ -140,6 +181,12 @@ export type PriceSnapshotDocument = InferSchemaType<typeof priceSnapshotSchema> 
   _id: mongoose.Types.ObjectId;
 };
 
+export type AvailabilityEventDocument = InferSchemaType<
+  typeof availabilityEventSchema
+> & {
+  _id: mongoose.Types.ObjectId;
+};
+
 export type CollectorRunDocument = InferSchemaType<typeof collectorRunSchema> & {
   _id: mongoose.Types.ObjectId;
 };
@@ -161,6 +208,13 @@ export const CarOffer =
 export const PriceSnapshot =
   (mongoose.models.PriceSnapshot as Model<PriceSnapshotDocument>) ||
   mongoose.model<PriceSnapshotDocument>("PriceSnapshot", priceSnapshotSchema);
+
+export const AvailabilityEvent =
+  (mongoose.models.AvailabilityEvent as Model<AvailabilityEventDocument>) ||
+  mongoose.model<AvailabilityEventDocument>(
+    "AvailabilityEvent",
+    availabilityEventSchema,
+  );
 
 export const CollectorRun =
   (mongoose.models.CollectorRun as Model<CollectorRunDocument>) ||

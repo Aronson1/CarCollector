@@ -1,5 +1,11 @@
 import { connectToDatabase } from "../db";
-import { CarOffer, CollectorRun, PriceSnapshot } from "../models/car";
+import {
+  AvailabilityEvent,
+  CarOffer,
+  CollectorRun,
+  PriceSnapshot,
+} from "../models/car";
+import type { AvailabilityEventType, AvailabilityStatus } from "../types";
 import type { PurchaseOption } from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
 
@@ -13,6 +19,7 @@ export interface DashboardStats {
   byPurchaseOption: DashboardPurchaseOptionStats[];
   largestDrops: DashboardPriceDrop[];
   averagePrices: DashboardAveragePrice[];
+  latestAvailabilityEvents: DashboardAvailabilityEvent[];
   lastRun?: DashboardCollectorRun;
   latestSnapshotAt?: string;
 }
@@ -22,6 +29,7 @@ export interface DashboardTotals {
   newToday: number;
   newInPeriod: number;
   priceDrops: number;
+  unavailable: number;
   averagePrice?: number;
 }
 
@@ -50,6 +58,18 @@ export interface DashboardAveragePrice {
   averagePrice: number;
 }
 
+export interface DashboardAvailabilityEvent {
+  id: string;
+  purchaseOption: PurchaseOption;
+  eventType: AvailabilityEventType;
+  status: AvailabilityStatus;
+  eventAt: string;
+  externalId: string;
+  brand: string;
+  model: string;
+  fullName: string;
+}
+
 export interface DashboardCollectorRun {
   purchaseOption: PurchaseOption | "all";
   status: "success" | "error" | "inferred";
@@ -70,6 +90,7 @@ interface OfferMetric {
   createdAt?: Date;
   currentPrice?: number;
   previousPrice?: number;
+  isAvailable: boolean;
 }
 
 interface SnapshotSummary {
@@ -106,6 +127,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       createdAt: offer.createdAt,
       currentPrice: firstPositivePrice(snapshot?.latestPrices || []),
       previousPrice: firstPositivePrice(snapshot?.previousPrices || []),
+      isAvailable: offer.isAvailable ?? true,
     };
   });
 
@@ -126,6 +148,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     })),
     largestDrops: getLargestDrops(metrics),
     averagePrices: getAveragePrices(metrics),
+    latestAvailabilityEvents: await getLatestAvailabilityEvents(),
     lastRun: await getLastRun(latestSnapshot?.fetchedAt),
     latestSnapshotAt: latestSnapshot?.fetchedAt.toISOString(),
   };
@@ -176,6 +199,7 @@ function summarizeMetrics(
       const delta = getPriceDelta(metric);
       return Boolean(delta && delta.amount < 0);
     }).length,
+    unavailable: metrics.filter((metric) => !metric.isAvailable).length,
     averagePrice: average(prices),
   };
 }
@@ -279,6 +303,35 @@ async function getLastRun(
   };
 }
 
+async function getLatestAvailabilityEvents(): Promise<DashboardAvailabilityEvent[]> {
+  const events = await AvailabilityEvent.find({})
+    .sort({ eventAt: -1 })
+    .limit(8)
+    .populate<{
+      offerId: {
+        externalId: string;
+        brand: string;
+        model: string;
+        fullName: string;
+      } | null;
+    }>("offerId", "externalId brand model fullName")
+    .lean();
+
+  return events
+    .filter((event) => event.offerId)
+    .map((event) => ({
+      id: String(event._id),
+      purchaseOption: normalizePurchaseOption(event.purchaseOption),
+      eventType: normalizeAvailabilityEventType(event.eventType),
+      status: event.status === "unavailable" ? "unavailable" : "available",
+      eventAt: event.eventAt.toISOString(),
+      externalId: event.offerId?.externalId || "",
+      brand: event.offerId?.brand || "",
+      model: event.offerId?.model || "",
+      fullName: event.offerId?.fullName || "",
+    }));
+}
+
 function getPriceDelta(metric: OfferMetric) {
   if (!metric.currentPrice || !metric.previousPrice) {
     return undefined;
@@ -324,6 +377,12 @@ function normalizePurchaseOption(value: unknown): PurchaseOption {
   if (value === "sale") return "sale";
   if (value === "newRelease") return "newRelease";
   return "release";
+}
+
+function normalizeAvailabilityEventType(value: unknown): AvailabilityEventType {
+  if (value === "returned") return "returned";
+  if (value === "disappeared") return "disappeared";
+  return "firstSeen";
 }
 
 function normalizeCollectorPurchaseOption(value: unknown): PurchaseOption | "all" {

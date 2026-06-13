@@ -94,6 +94,11 @@ function Dashboard({ stats }: { stats: DashboardStats }) {
           value={formatNumber(stats.totals.priceDrops)}
         />
         <MetricCard
+          label="Zniknęły"
+          tone={stats.totals.unavailable > 0 ? "warning" : "neutral"}
+          value={formatNumber(stats.totals.unavailable)}
+        />
+        <MetricCard
           label="Śr. najem używane"
           value={formatPrice(averagePrices.release)}
         />
@@ -197,6 +202,48 @@ function Dashboard({ stats }: { stats: DashboardStats }) {
           </div>
         </div>
       </div>
+
+      <div className="mt-4 rounded border border-slate-800 bg-slate-900 p-4">
+        <h2 className="text-sm font-semibold text-white">
+          Zmiany dostępności
+        </h2>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          {stats.latestAvailabilityEvents.length > 0 ? (
+            stats.latestAvailabilityEvents.map((event) => (
+              <div
+                className="grid gap-2 border-t border-slate-800 pt-3 first:border-t-0 first:pt-0 lg:first:border-t lg:first:pt-3 lg:[&:nth-child(-n+2)]:border-t-0 lg:[&:nth-child(-n+2)]:pt-0"
+                key={event.id}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded px-2 py-1 text-xs font-semibold ring-1 ${getAvailabilityEventClassName(
+                      event.eventType,
+                    )}`}
+                  >
+                    {formatAvailabilityEventType(event.eventType)}
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {formatDateTime(event.eventAt)}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-slate-100">
+                    {event.fullName}
+                  </p>
+                  <p className="mt-1 truncate text-xs text-slate-500">
+                    {getPurchaseOptionLabel(event.purchaseOption)} / ID{" "}
+                    {event.externalId}
+                  </p>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-slate-500">
+              Brak zapisanych zmian dostępności.
+            </p>
+          )}
+        </div>
+      </div>
     </section>
   );
 }
@@ -207,17 +254,20 @@ function MetricCard({
   value,
 }: {
   label: string;
-  tone?: "neutral" | "positive";
+  tone?: "neutral" | "positive" | "warning";
   value: string;
 }) {
+  const valueClassName =
+    tone === "positive"
+      ? "text-emerald-200"
+      : tone === "warning"
+        ? "text-amber-200"
+        : "text-white";
+
   return (
     <div className="rounded border border-slate-800 bg-slate-900 p-4">
       <p className="text-xs font-semibold uppercase text-slate-500">{label}</p>
-      <p
-        className={`mt-2 text-2xl font-semibold ${
-          tone === "positive" ? "text-emerald-200" : "text-white"
-        }`}
-      >
+      <p className={`mt-2 text-2xl font-semibold ${valueClassName}`}>
         {value}
       </p>
     </div>
@@ -268,6 +318,28 @@ function getRunStatusClassName(status: DashboardCollectorRun["status"]) {
   if (status === "error") return "ml-2 font-semibold text-red-200";
   if (status === "inferred") return "ml-2 font-semibold text-amber-200";
   return "ml-2 font-semibold text-emerald-200";
+}
+
+function formatAvailabilityEventType(
+  eventType: DashboardStats["latestAvailabilityEvents"][number]["eventType"],
+) {
+  if (eventType === "returned") return "Wróciła";
+  if (eventType === "disappeared") return "Zniknęła";
+  return "Nowa";
+}
+
+function getAvailabilityEventClassName(
+  eventType: DashboardStats["latestAvailabilityEvents"][number]["eventType"],
+) {
+  if (eventType === "returned") {
+    return "bg-cyan-400/15 text-cyan-100 ring-cyan-400/30";
+  }
+
+  if (eventType === "disappeared") {
+    return "bg-amber-300/15 text-amber-100 ring-amber-300/30";
+  }
+
+  return "bg-emerald-400/15 text-emerald-100 ring-emerald-400/30";
 }
 
 function getPurchaseOptionLabel(purchaseOption: PurchaseOption) {

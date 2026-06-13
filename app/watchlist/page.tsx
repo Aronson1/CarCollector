@@ -266,13 +266,13 @@ export default function WatchlistPage() {
                           <h3 className="truncate text-base font-semibold text-white">
                             {car.fullName}
                           </h3>
-                          {car.isAvailable && <AvailableBadge />}
+                          <AvailabilityBadge car={car} />
                           <DealScoreBadge car={car} />
                         </div>
                         <p className="mt-1 text-sm text-slate-400">
                           {car.brand} / {car.model} / ID {car.externalId}
                         </p>
-                        <dl className="mt-3 grid gap-2 text-sm text-slate-300 sm:grid-cols-6">
+                        <dl className="mt-3 grid gap-2 text-sm text-slate-300 sm:grid-cols-7">
                           <div>
                             <dt className="text-slate-500">
                               {getPriceLabel(car.purchaseOption)}
@@ -302,6 +302,10 @@ export default function WatchlistPage() {
                           <div>
                             <dt className="text-slate-500">Historia</dt>
                             <dd>{car.priceHistory.length} punktów</dd>
+                          </div>
+                          <div>
+                            <dt className="text-slate-500">Dostępność</dt>
+                            <dd>{formatAvailabilitySummary(car)}</dd>
                           </div>
                         </dl>
                       </div>
@@ -557,7 +561,16 @@ function CarImageGallery({
   );
 }
 
-function AvailableBadge() {
+function AvailabilityBadge({ car }: { car: CarOfferView }) {
+  if (!car.isAvailable) {
+    return (
+      <span className="inline-flex min-h-6 items-center gap-1.5 rounded bg-amber-300/15 px-2 py-1 text-xs font-semibold text-amber-100 ring-1 ring-amber-300/30">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
+        Zniknęła
+      </span>
+    );
+  }
+
   return (
     <span className="inline-flex min-h-6 items-center gap-1.5 rounded bg-emerald-400/10 px-2 py-1 text-xs font-semibold text-emerald-100 ring-1 ring-emerald-400/30">
       <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
@@ -660,6 +673,23 @@ function formatPowerHp(value?: number) {
 
 function formatYear(value?: number) {
   return value ? String(value) : "-";
+}
+
+function formatAvailabilitySummary(car: CarOfferView) {
+  if (car.isAvailable) {
+    return car.availableSince
+      ? `od ${formatDate(car.availableSince)}`
+      : "dostępna";
+  }
+
+  return car.unavailableSince
+    ? `zniknęła ${formatDate(car.unavailableSince)}`
+    : "zniknęła";
+}
+
+function formatDate(value?: string) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("pl-PL").format(new Date(value));
 }
 
 function formatDateTime(value?: string) {

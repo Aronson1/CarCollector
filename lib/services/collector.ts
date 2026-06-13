@@ -1,9 +1,19 @@
 import { connectToDatabase } from "../db";
-import { CarOffer, CollectorRun, PriceSnapshot } from "../models/car";
+import {
+  AvailabilityEvent,
+  CarOffer,
+  CollectorRun,
+  PriceSnapshot,
+} from "../models/car";
+import {
+  getSeenAvailabilityUpdate,
+  shouldRecordDisappearance,
+} from "../availability";
 import {
   pricesEqual,
   normalizeArvalAnnouncement,
   normalizeArvalNewCarOffer,
+  normalizeArvalPowerHp,
 } from "../prices";
 import {
   fetchArvalAnnouncementDetailsById,
@@ -13,6 +23,7 @@ import { fetchArvalNewCarOffers } from "../sources/arval-new";
 import type { ArvalAnnouncement, CarDetails, PurchaseOption } from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
 import { sendUsedRentalDealPushNotifications } from "./push-notifications";
+import type { Types } from "mongoose";
 
 export type CollectorPurchaseOption = PurchaseOption | "all";
 
@@ -22,6 +33,8 @@ export interface CollectorRunResult {
   offersUpserted: number;
   snapshotsCreated: number;
   skippedUnchanged: number;
+  availabilityEventsCreated?: number;
+  offersMarkedUnavailable?: number;
   dealPushNotificationsSent?: number;
   newOfferIds?: string[];
   runs?: CollectorRunResult[];
@@ -36,6 +49,20 @@ export interface ImageBackfillResult {
   modified: number;
   manyImages: number;
   withEquipment: number;
+  hasMore: boolean;
+}
+
+export interface PowerBackfillResult {
+  purchaseOption: Exclude<PurchaseOption, "newRelease">;
+  pageNumber: number;
+  pageSize: number;
+  fetched: number;
+  updated: number;
+  fromStoredData: number;
+  fromArvalDetails: number;
+  unavailable: number;
+  missingPower: number;
+  failed: number;
   hasMore: boolean;
 }
 
@@ -127,6 +154,96 @@ export async function backfillOfferImages(
   return result;
 }
 
+export async function backfillOfferPower(
+  purchaseOption: Exclude<PurchaseOption, "newRelease">,
+  pageNumber = 1,
+  pageSize = 30,
+): Promise<PowerBackfillResult> {
+  await connectToDatabase();
+  await ensurePurchaseOptionMigration();
+
+  const offers = await CarOffer.find(
+    {
+      source: "arval",
+      purchaseOption,
+      $or: [
+        { "details.powerHp": { $exists: false } },
+        { "details.powerHp": null },
+      ],
+    },
+    { externalId: 1, rawData: 1 },
+  )
+    .sort({ rawCreatedAt: -1, createdAt: -1, _id: -1 })
+    .skip((pageNumber - 1) * pageSize)
+    .limit(pageSize)
+    .lean();
+
+  const result: PowerBackfillResult = {
+    purchaseOption,
+    pageNumber,
+    pageSize,
+    fetched: offers.length,
+    updated: 0,
+    fromStoredData: 0,
+    fromArvalDetails: 0,
+    unavailable: 0,
+    missingPower: 0,
+    failed: 0,
+    hasMore: offers.length === pageSize,
+  };
+
+  await mapWithConcurrency(offers, 8, async (offer) => {
+    try {
+      const storedPowerHp = isArvalAnnouncement(offer.rawData)
+        ? normalizeArvalPowerHp(offer.rawData)
+        : undefined;
+
+      if (storedPowerHp) {
+        await updateOfferPower(offer._id, storedPowerHp, offer.rawData);
+        result.updated += 1;
+        result.fromStoredData += 1;
+        return;
+      }
+
+      const details = await fetchArvalAnnouncementDetailsById(offer.externalId);
+      const powerHp = normalizeArvalPowerHp(details);
+
+      if (!powerHp) {
+        result.missingPower += 1;
+        return;
+      }
+
+      await updateOfferPower(
+        offer._id,
+        powerHp,
+        mergeRawData(details, offer.rawData),
+      );
+      result.updated += 1;
+      result.fromArvalDetails += 1;
+    } catch {
+      result.failed += 1;
+    }
+  });
+
+  return result;
+}
+
+async function updateOfferPower(
+  id: Types.ObjectId,
+  powerHp: number,
+  rawData: unknown,
+) {
+  await CarOffer.updateOne(
+    { _id: id },
+    {
+      $set: {
+        "details.powerHp": powerHp,
+        rawData,
+      },
+    },
+  );
+}
+
 function isArvalAnnouncement(value: unknown): value is ArvalAnnouncement {
   return Boolean(value && typeof value === "object" && "id" in value);
 }
@@ -175,6 +292,8 @@ export async function runCollector(
         offersUpserted: sumRuns(runs, "offersUpserted"),
         snapshotsCreated: sumRuns(runs, "snapshotsCreated"),
         skippedUnchanged: sumRuns(runs, "skippedUnchanged"),
+        availabilityEventsCreated: sumRuns(runs, "availabilityEventsCreated"),
+        offersMarkedUnavailable: sumRuns(runs, "offersMarkedUnavailable"),
         dealPushNotificationsSent: sumRuns(runs, "dealPushNotificationsSent"),
         runs,
       };
@@ -259,6 +378,7 @@ async function collectPurchaseOption(
   await CarOffer.bulkWrite(
     normalizedOffers.map((normalized) => {
       const existing = existingOfferEnrichment.get(normalized.externalId);
+      const availabilityUpdate = getSeenAvailabilityUpdate(existing, fetchedAt);
       const imageUrls = mergeStringValues(
         [normalized.imageUrl, ...normalized.imageUrls],
         existing?.imageUrls,
@@ -290,6 +410,12 @@ async function collectPurchaseOption(
               firstRegistrationDate: normalized.firstRegistrationDate,
               registrationNumber: normalized.registrationNumber,
               labelCode: normalized.labelCode,
+              isAvailable: availabilityUpdate.isAvailable,
+              availableSince: availabilityUpdate.availableSince,
+              unavailableSince: availabilityUpdate.unavailableSince,
+              lastSeenAt: availabilityUpdate.lastSeenAt,
+              lastAvailabilityChangeAt:
+                availabilityUpdate.lastAvailabilityChangeAt,
               details,
               rawCreatedAt: normalized.rawCreatedAt,
               rawUpdatedAt: normalized.rawUpdatedAt,
@@ -317,6 +443,40 @@ async function collectPurchaseOption(
   const offerByExternalId = new Map(
     offers.map((offer) => [offer.externalId, offer]),
   );
+  const availabilityEvents = offers
+    .map((offer) => {
+      const existing = existingOfferEnrichment.get(offer.externalId);
+      const eventType = getSeenAvailabilityUpdate(existing, fetchedAt).eventType;
+
+      if (!eventType) {
+        return null;
+      }
+
+      return {
+        offerId: offer._id,
+        purchaseOption,
+        eventType,
+        status: "available",
+        eventAt: fetchedAt,
+      };
+    })
+    .filter((event): event is NonNullable<typeof event> => Boolean(event));
+
+  if (availabilityEvents.length > 0) {
+    await AvailabilityEvent.insertMany(availabilityEvents, { ordered: false });
+    result.availabilityEventsCreated =
+      (result.availabilityEventsCreated || 0) + availabilityEvents.length;
+  }
+
+  const unavailableResult = await markMissingOffersUnavailable(
+    purchaseOption,
+    externalIds,
+    fetchedAt,
+  );
+  result.offersMarkedUnavailable = unavailableResult.offersMarkedUnavailable;
+  result.availabilityEventsCreated =
+    (result.availabilityEventsCreated || 0) +
+    unavailableResult.availabilityEventsCreated;
 
   const previousSnapshots = await PriceSnapshot.find({
     offerId: { $in: offers.map((offer) => offer._id) },
@@ -419,12 +579,13 @@ async function fetchAndNormalizeUsedArvalOffers(
           [offer.imageUrl, ...offer.imageUrls],
           existing?.imageUrls,
         ).length <= 1;
+      const needsPower = !offer.details.powerHp && !existing?.details?.powerHp;
       const needsEquipment =
         purchaseOption === "sale" &&
         mergeStringValues(offer.equipmentItems, existing?.equipmentItems)
           .length === 0;
 
-      if (!needsGallery && !needsEquipment) {
+      if (!needsGallery && !needsPower && !needsEquipment) {
         return offer;
       }
 
@@ -457,6 +618,9 @@ async function fetchAndNormalizeUsedArvalOffers(
 interface ExistingOfferEnrichment {
   imageUrls: string[];
   equipmentItems: string[];
+  isAvailable?: boolean | null;
+  availableSince?: Date | null;
+  lastAvailabilityChangeAt?: Date | null;
   details?: {
     powerHp?: number | null;
   };
@@ -474,6 +638,9 @@ async function getExistingOfferEnrichment(
       imageUrl: 1,
       imageUrls: 1,
       equipmentItems: 1,
+      isAvailable: 1,
+      availableSince: 1,
+      lastAvailabilityChangeAt: 1,
       details: 1,
       rawData: 1,
     },
@@ -485,6 +652,9 @@ async function getExistingOfferEnrichment(
       {
         imageUrls: mergeStringValues([offer.imageUrl], offer.imageUrls),
         equipmentItems: mergeStringValues(offer.equipmentItems),
+        isAvailable: offer.isAvailable,
+        availableSince: offer.availableSince,
+        lastAvailabilityChangeAt: offer.lastAvailabilityChangeAt,
         details: offer.details || undefined,
         rawData: offer.rawData,
       },
@@ -534,6 +704,62 @@ function mergeStringValues(
   ) as string[];
 }
 
+async function markMissingOffersUnavailable(
+  purchaseOption: PurchaseOption,
+  currentExternalIds: string[],
+  eventAt: Date,
+): Promise<{
+  availabilityEventsCreated: number;
+  offersMarkedUnavailable: number;
+}> {
+  const disappearedOffers = await CarOffer.find(
+    {
+      source: "arval",
+      purchaseOption,
+      externalId: { $nin: currentExternalIds },
+      isAvailable: { $ne: false },
+    },
+    {
+      _id: 1,
+      purchaseOption: 1,
+      isAvailable: 1,
+      availableSince: 1,
+      lastAvailabilityChangeAt: 1,
+    },
+  ).lean();
+  const offersToMark = disappearedOffers.filter(shouldRecordDisappearance);
+
+  if (offersToMark.length === 0) {
+    return { availabilityEventsCreated: 0, offersMarkedUnavailable: 0 };
+  }
+
+  await CarOffer.updateMany(
+    { _id: { $in: offersToMark.map((offer) => offer._id) } },
+    {
+      $set: {
+        isAvailable: false,
+        unavailableSince: eventAt,
+        lastAvailabilityChangeAt: eventAt,
+      },
+    },
+  );
+  await AvailabilityEvent.insertMany(
+    offersToMark.map((offer) => ({
+      offerId: offer._id,
+      purchaseOption,
+      eventType: "disappeared",
+      status: "unavailable",
+      eventAt,
+    })),
+    { ordered: false },
+  );
+
+  return {
+    availabilityEventsCreated: offersToMark.length,
+    offersMarkedUnavailable: offersToMark.length,
+  };
+}
+
 async function recordCollectorRun(
   startedAt: Date,
   result: CollectorRunResult,
@@ -549,6 +775,8 @@ async function recordCollectorRun(
     offersUpserted: result.offersUpserted,
     snapshotsCreated: result.snapshotsCreated,
     skippedUnchanged: result.skippedUnchanged,
+    availabilityEventsCreated: result.availabilityEventsCreated || 0,
+    offersMarkedUnavailable: result.offersMarkedUnavailable || 0,
     dealPushNotificationsSent: result.dealPushNotificationsSent || 0,
     message,
   });
@@ -561,6 +789,8 @@ function sumRuns(
     | "offersUpserted"
     | "snapshotsCreated"
     | "skippedUnchanged"
+    | "availabilityEventsCreated"
+    | "offersMarkedUnavailable"
     | "dealPushNotificationsSent",
 ): number {
   return runs.reduce((total, run) => total + (run[key] || 0), 0);

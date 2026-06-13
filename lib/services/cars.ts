@@ -1,6 +1,6 @@
 import { connectToDatabase } from "../db";
 import { applyDealScores } from "../deals";
-import { CarOffer, PriceSnapshot } from "../models/car";
+import { AvailabilityEvent, CarOffer, PriceSnapshot } from "../models/car";
 import { parsePowerHp } from "../power";
 import {
   getPrimaryPriceDelta,
@@ -11,6 +11,7 @@ import {
 import type {
   CarDetails,
   CarOfferView,
+  AvailabilityEventView,
   PriceSnapshotView,
   PurchaseOption,
 } from "../types";
@@ -182,8 +183,12 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
     };
   }
 
-  const offers = await CarOffer.find(query).lean();
-  const histories = await getHistories(offers.map((offer) => offer._id));
+  const offers = (await CarOffer.find(query).lean()) as LeanCarOffer[];
+  const offerIds = offers.map((offer) => offer._id);
+  const [recentHistories, recentAvailabilityEvents] = await Promise.all([
+    getRecentHistories(offerIds, 2),
+    getRecentAvailabilityEvents(offerIds, 5),
+  ]);
   const latestListUpdate = offers.reduce<Date | undefined>((latest, offer) => {
     const updatedAt = offer.updatedAt;
 
@@ -193,39 +198,14 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
     return latest;
   }, undefined);
 
-  const views = offers.map((offer) => {
-      const history = histories.get(String(offer._id)) || [];
-      const latest = history.at(-1);
-
-      return {
-        id: String(offer._id),
-        source: "arval",
-        purchaseOption,
-        externalId: offer.externalId,
-        offerUrl: offer.offerUrl || undefined,
-        imageUrl: offer.imageUrl || undefined,
-        imageUrls: getImageUrls(offer.imageUrl, offer.imageUrls),
-        equipmentItems: getEquipmentItems(offer.equipmentItems, offer.rawData),
-        fullName: offer.fullName,
-        brand: offer.brand,
-        model: offer.model,
-        firstRegistrationDate: offer.firstRegistrationDate || undefined,
-        registrationNumber: offer.registrationNumber || undefined,
-        labelCode: offer.labelCode || undefined,
-        announcementCreatedAt: offer.rawCreatedAt?.toISOString(),
-        announcementUpdatedAt: offer.rawUpdatedAt?.toISOString(),
-        details: sanitizeDetails(offer.details, offer.fullName, offer.rawData),
-        latestPrices: latest?.prices || [],
-        latestFetchedAt: latest?.fetchedAt,
-        priceDelta: getPrimaryPriceDelta(
-          history.map((snapshot) => snapshot.prices),
-        ),
-        isAvailable: isOfferAvailable(offer.rawData),
-        hasPriceChanged: hasPriceChanged(history.map((snapshot) => snapshot.prices)),
-        isWatchlisted: Boolean(offer.isWatchlisted),
-        priceHistory: history,
-      } satisfies CarOfferView;
-    });
+  const views = offers.map((offer) =>
+    buildCarView(
+      offer,
+      purchaseOption,
+      recentHistories.get(String(offer._id)) || [],
+      recentAvailabilityEvents.get(String(offer._id)) || [],
+    ),
+  );
 
   const settings = await getAppSettings();
   const scoredViews = applyDealScores(views, settings.dealScoreWeights);
@@ -241,7 +221,7 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
 
   if (pageSize === "all") {
     return {
-      cars: sortedViews,
+      cars: await hydrateFullHistories(sortedViews, offers),
       total,
       page: 1,
       pageSize,
@@ -253,15 +233,130 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(Math.max(filters.page || 1, 1), totalPages);
   const start = (page - 1) * pageSize;
+  const pageCars = sortedViews.slice(start, start + pageSize);
 
   return {
-    cars: sortedViews.slice(start, start + pageSize),
+    cars: await hydrateFullHistories(pageCars, offers),
     total,
     page,
     pageSize,
     totalPages,
     listUpdatedAt: latestListUpdate?.toISOString(),
   };
+}
+
+type LeanCarOffer = {
+  _id: Types.ObjectId;
+  externalId: string;
+  offerUrl?: string | null;
+  imageUrl?: string | null;
+  imageUrls?: string[] | null;
+  equipmentItems?: string[] | null;
+  fullName: string;
+  brand: string;
+  model: string;
+  firstRegistrationDate?: string | null;
+  registrationNumber?: string | null;
+  labelCode?: string | null;
+  details?: {
+    mileage?: number | null;
+    annualMileage?: number | null;
+    registrationYear?: number | null;
+    fuelTypeLabel?: string | null;
+    gearbox?: string | null;
+    warrantyMonths?: number | null;
+    contractMonths?: number | null;
+    downPayment?: number | null;
+    powerHp?: number | null;
+  } | null;
+  rawCreatedAt?: Date | null;
+  rawUpdatedAt?: Date | null;
+  rawData?: unknown;
+  isAvailable?: boolean | null;
+  availableSince?: Date | null;
+  unavailableSince?: Date | null;
+  lastSeenAt?: Date | null;
+  lastAvailabilityChangeAt?: Date | null;
+  isWatchlisted?: boolean | null;
+  updatedAt?: Date | null;
+};
+
+function buildCarView(
+  offer: LeanCarOffer,
+  purchaseOption: PurchaseOption,
+  history: PriceSnapshotView[],
+  availabilityHistory: AvailabilityEventView[],
+): CarOfferView {
+  const latest = history.at(-1);
+  const isAvailable = getOfferAvailability(offer);
+
+  return {
+    id: String(offer._id),
+    source: "arval",
+    purchaseOption,
+    externalId: offer.externalId,
+    offerUrl: offer.offerUrl || undefined,
+    imageUrl: offer.imageUrl || undefined,
+    imageUrls: getImageUrls(offer.imageUrl, offer.imageUrls),
+    equipmentItems: getEquipmentItems(offer.equipmentItems, offer.rawData),
+    fullName: offer.fullName,
+    brand: offer.brand,
+    model: offer.model,
+    firstRegistrationDate: offer.firstRegistrationDate || undefined,
+    registrationNumber: offer.registrationNumber || undefined,
+    labelCode: offer.labelCode || undefined,
+    announcementCreatedAt: offer.rawCreatedAt?.toISOString(),
+    announcementUpdatedAt: offer.rawUpdatedAt?.toISOString(),
+    details: sanitizeDetails(offer.details, offer.fullName, offer.rawData),
+    latestPrices: latest?.prices || [],
+    latestFetchedAt: latest?.fetchedAt,
+    priceDelta: getPrimaryPriceDelta(history.map((snapshot) => snapshot.prices)),
+    isAvailable,
+    availableSince: offer.availableSince?.toISOString(),
+    unavailableSince: offer.unavailableSince?.toISOString(),
+    lastSeenAt: offer.lastSeenAt?.toISOString(),
+    lastAvailabilityChangeAt: offer.lastAvailabilityChangeAt?.toISOString(),
+    availabilityHistory,
+    hasPriceChanged: hasPriceChanged(history.map((snapshot) => snapshot.prices)),
+    isWatchlisted: Boolean(offer.isWatchlisted),
+    priceHistory: history,
+  };
+}
+
+async function hydrateFullHistories(
+  cars: CarOfferView[],
+  offers: LeanCarOffer[],
+): Promise<CarOfferView[]> {
+  if (cars.length === 0) {
+    return cars;
+  }
+
+  const offersById = new Map(offers.map((offer) => [String(offer._id), offer]));
+  const offerIds = cars
+    .map((car) => offersById.get(car.id)?._id)
+    .filter((id): id is Types.ObjectId => Boolean(id));
+  const [histories, availabilityEvents] = await Promise.all([
+    getHistories(offerIds),
+    getRecentAvailabilityEvents(offerIds, 10),
+  ]);
+
+  return cars.map((car) => {
+    const offer = offersById.get(car.id);
+
+    if (!offer) {
+      return car;
+    }
+
+    return {
+      ...buildCarView(
+        offer,
+        car.purchaseOption,
+        histories.get(car.id) || [],
+        availabilityEvents.get(car.id) || [],
+      ),
+      dealScore: car.dealScore,
+    };
+  });
 }
 
 export async function setCarWatchlistStatus(
@@ -278,7 +373,7 @@ export async function setCarWatchlistStatus(
   const offer = await CarOffer.findByIdAndUpdate(
     id,
     { $set: { isWatchlisted } },
-    { new: true, projection: { _id: 1, isWatchlisted: 1 } },
+    { projection: { _id: 1, isWatchlisted: 1 }, returnDocument: "after" },
   ).lean();
 
   if (!offer) {
@@ -380,19 +475,161 @@ async function getHistories(
     .lean();
 
   for (const snapshot of snapshots) {
-    const offerId = String(snapshot.offerId);
-    const history = histories.get(offerId) || [];
-    history.push({
-      id: String(snapshot._id),
-      purchaseOption: normalizePurchaseOption(snapshot.purchaseOption),
-      fetchedAt: snapshot.fetchedAt.toISOString(),
-      rawUpdatedAt: snapshot.rawUpdatedAt?.toISOString(),
-      prices: snapshot.prices,
-    });
-    histories.set(offerId, history);
+    addHistorySnapshot(histories, mapSnapshotToView(snapshot));
   }
 
   return histories;
+}
+
+async function getRecentHistories(
+  offerIds: Types.ObjectId[],
+  limit: number,
+): Promise<Map<string, PriceSnapshotView[]>> {
+  const histories = new Map<string, PriceSnapshotView[]>();
+
+  if (offerIds.length === 0) {
+    return histories;
+  }
+
+  const groupedSnapshots = await PriceSnapshot.aggregate<{
+    _id: Types.ObjectId;
+    snapshots: Array<{
+      _id: Types.ObjectId;
+      offerId: Types.ObjectId;
+      purchaseOption: unknown;
+      fetchedAt: Date;
+      rawUpdatedAt?: Date;
+      prices: number[];
+    }>;
+  }>([
+    { $match: { offerId: { $in: offerIds } } },
+    { $sort: { offerId: 1, fetchedAt: -1 } },
+    {
+      $group: {
+        _id: "$offerId",
+        snapshots: {
+          $push: {
+            _id: "$_id",
+            offerId: "$offerId",
+            purchaseOption: "$purchaseOption",
+            fetchedAt: "$fetchedAt",
+            rawUpdatedAt: "$rawUpdatedAt",
+            prices: "$prices",
+          },
+        },
+      },
+    },
+    { $project: { snapshots: { $slice: ["$snapshots", limit] } } },
+  ]);
+
+  for (const group of groupedSnapshots) {
+    for (const snapshot of group.snapshots.reverse()) {
+      addHistorySnapshot(histories, mapSnapshotToView(snapshot));
+    }
+  }
+
+  return histories;
+}
+
+async function getRecentAvailabilityEvents(
+  offerIds: Types.ObjectId[],
+  limit: number,
+): Promise<Map<string, AvailabilityEventView[]>> {
+  const histories = new Map<string, AvailabilityEventView[]>();
+
+  if (offerIds.length === 0) {
+    return histories;
+  }
+
+  const groupedEvents = await AvailabilityEvent.aggregate<{
+    _id: Types.ObjectId;
+    events: Array<{
+      _id: Types.ObjectId;
+      purchaseOption: unknown;
+      eventType: unknown;
+      status: unknown;
+      eventAt: Date;
+    }>;
+  }>([
+    { $match: { offerId: { $in: offerIds } } },
+    { $sort: { offerId: 1, eventAt: -1 } },
+    {
+      $group: {
+        _id: "$offerId",
+        events: {
+          $push: {
+            _id: "$_id",
+            purchaseOption: "$purchaseOption",
+            eventType: "$eventType",
+            status: "$status",
+            eventAt: "$eventAt",
+          },
+        },
+      },
+    },
+    { $project: { events: { $slice: ["$events", limit] } } },
+  ]);
+
+  for (const group of groupedEvents) {
+    histories.set(
+      String(group._id),
+      group.events.reverse().map(mapAvailabilityEventToView),
+    );
+  }
+
+  return histories;
+}
+
+function addHistorySnapshot(
+  histories: Map<string, PriceSnapshotView[]>,
+  snapshot: HistorySnapshotView,
+) {
+  const { offerId, ...snapshotView } = snapshot;
+  const history = histories.get(offerId) || [];
+  history.push(snapshotView);
+  histories.set(offerId, history);
+}
+
+type HistorySnapshotView = PriceSnapshotView & { offerId: string };
+
+function mapAvailabilityEventToView(event: {
+  _id: Types.ObjectId;
+  purchaseOption: unknown;
+  eventType: unknown;
+  status: unknown;
+  eventAt: Date;
+}): AvailabilityEventView {
+  return {
+    id: String(event._id),
+    purchaseOption: normalizePurchaseOption(event.purchaseOption),
+    eventType: normalizeAvailabilityEventType(event.eventType),
+    status: event.status === "unavailable" ? "unavailable" : "available",
+    eventAt: event.eventAt.toISOString(),
+  };
+}
+
+function mapSnapshotToView(snapshot: {
+  _id: Types.ObjectId;
+  offerId: Types.ObjectId;
+  purchaseOption: unknown;
+  fetchedAt: Date;
+  rawUpdatedAt?: Date | null;
+  prices: number[];
+}): HistorySnapshotView {
+  return {
+    id: String(snapshot._id),
+    offerId: String(snapshot.offerId),
+    purchaseOption: normalizePurchaseOption(snapshot.purchaseOption),
+    fetchedAt: snapshot.fetchedAt.toISOString(),
+    rawUpdatedAt: snapshot.rawUpdatedAt?.toISOString(),
+    prices: snapshot.prices,
+  };
+}
+
+function normalizeAvailabilityEventType(value: unknown) {
+  if (value === "returned") return "returned";
+  if (value === "disappeared") return "disappeared";
+  return "firstSeen";
 }
 
 function normalizePurchaseOption(value: unknown): PurchaseOption {
@@ -433,7 +670,15 @@ function comparePriceDelta(
   return direction === "asc" ? leftDelta - rightDelta : rightDelta - leftDelta;
 }
 
-function isOfferAvailable(rawData: unknown): boolean {
+function getOfferAvailability(offer: LeanCarOffer): boolean {
+  if (typeof offer.isAvailable === "boolean") {
+    return offer.isAvailable;
+  }
+
+  return isOfferAvailableFromRawData(offer.rawData);
+}
+
+function isOfferAvailableFromRawData(rawData: unknown): boolean {
   if (!rawData || typeof rawData !== "object") {
     return false;
   }
@@ -468,7 +713,7 @@ function sanitizeDetails(details: {
   powerHp?: number | null;
 } | null | undefined, fullName?: string, rawData?: unknown): CarDetails {
   const parsedPowerHp = parsePowerHp(fullName);
-  const rawDataPowerHp = getRawDataPowerHp(rawData);
+  const rawDataPowerHp = getRawDataExplicitPowerHp(rawData);
 
   if (!details) {
     return {
@@ -485,11 +730,11 @@ function sanitizeDetails(details: {
     warrantyMonths: details.warrantyMonths ?? undefined,
     contractMonths: details.contractMonths ?? undefined,
     downPayment: details.downPayment ?? undefined,
-    powerHp: rawDataPowerHp ?? details.powerHp ?? parsedPowerHp,
+    powerHp: details.powerHp ?? rawDataPowerHp ?? parsedPowerHp,
   };
 }
 
-function getRawDataPowerHp(rawData: unknown): number | undefined {
+function getRawDataExplicitPowerHp(rawData: unknown): number | undefined {
   if (!rawData || typeof rawData !== "object") {
     return undefined;
   }
@@ -500,7 +745,10 @@ function getRawDataPowerHp(rawData: unknown): number | undefined {
     trim?: string;
   };
 
-  return normalizeArvalPowerHp(record);
+  return normalizeArvalPowerHp({
+    horsePower: record.horsePower,
+    power: record.power,
+  });
 }
 
 function getImageUrls(

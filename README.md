@@ -2,6 +2,10 @@
 
 Private Next.js panel for collecting Arval car offers, storing price snapshots in MongoDB, and reviewing price history.
 
+The collector also tracks offer availability: each run marks visible offers as
+available, marks previously visible missing offers as unavailable, and stores
+first-seen, returned, and disappeared events.
+
 ## Local setup
 
 ```bash
