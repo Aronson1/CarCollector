@@ -11,6 +11,8 @@ import { ensurePurchaseOptionMigration } from "./migrations";
 
 const purchaseOptions: PurchaseOption[] = ["release", "sale", "newRelease"];
 const dashboardPeriodDays = 7;
+export const defaultModelTrendDays = 90;
+const maxModelTrendSeries = 12;
 
 export interface DashboardStats {
   generatedAt: string;
@@ -19,7 +21,9 @@ export interface DashboardStats {
   byPurchaseOption: DashboardPurchaseOptionStats[];
   largestDrops: DashboardPriceDrop[];
   averagePrices: DashboardAveragePrice[];
+  modelPriceTrends: DashboardModelPriceTrend[];
   latestAvailabilityEvents: DashboardAvailabilityEvent[];
+  modelTrendDays: number;
   lastRun?: DashboardCollectorRun;
   latestSnapshotAt?: string;
 }
@@ -56,6 +60,22 @@ export interface DashboardAveragePrice {
   model: string;
   count: number;
   averagePrice: number;
+}
+
+export interface DashboardModelPriceTrend {
+  key: string;
+  purchaseOption: PurchaseOption;
+  brand: string;
+  model: string;
+  label: string;
+  observations: number;
+  points: DashboardModelPriceTrendPoint[];
+}
+
+export interface DashboardModelPriceTrendPoint {
+  date: string;
+  averagePrice: number;
+  count: number;
 }
 
 export interface DashboardAvailabilityEvent {
@@ -100,7 +120,22 @@ interface SnapshotSummary {
   previousPrices?: number[];
 }
 
-export async function getDashboardStats(): Promise<DashboardStats> {
+interface ModelTrendAggregationRow {
+  _id: {
+    purchaseOption: unknown;
+    brand: string;
+    model: string;
+    date: string;
+  };
+  averagePrice: number;
+  count: number;
+}
+
+export async function getDashboardStats({
+  modelTrendDays = defaultModelTrendDays,
+}: {
+  modelTrendDays?: number;
+} = {}): Promise<DashboardStats> {
   await connectToDatabase();
   await ensurePurchaseOptionMigration();
 
@@ -133,6 +168,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 
   const today = startOfToday();
   const periodStart = daysAgo(dashboardPeriodDays);
+  const [latestAvailabilityEvents, modelPriceTrends, lastRun] =
+    await Promise.all([
+      getLatestAvailabilityEvents(),
+      getModelPriceTrends(modelTrendDays),
+      getLastRun(latestSnapshot?.fetchedAt),
+    ]);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -148,8 +189,10 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     })),
     largestDrops: getLargestDrops(metrics),
     averagePrices: getAveragePrices(metrics),
-    latestAvailabilityEvents: await getLatestAvailabilityEvents(),
-    lastRun: await getLastRun(latestSnapshot?.fetchedAt),
+    modelPriceTrends,
+    latestAvailabilityEvents,
+    modelTrendDays,
+    lastRun,
     latestSnapshotAt: latestSnapshot?.fetchedAt.toISOString(),
   };
 }
@@ -332,6 +375,103 @@ async function getLatestAvailabilityEvents(): Promise<DashboardAvailabilityEvent
     }));
 }
 
+async function getModelPriceTrends(
+  modelTrendDays: number,
+): Promise<DashboardModelPriceTrend[]> {
+  const rows = await PriceSnapshot.aggregate<ModelTrendAggregationRow>([
+    { $match: { fetchedAt: { $gte: daysAgo(modelTrendDays) } } },
+    {
+      $project: {
+        offerId: 1,
+        purchaseOption: 1,
+        fetchedAt: 1,
+        primaryPrice: {
+          $arrayElemAt: [
+            {
+              $filter: {
+                input: "$prices",
+                as: "price",
+                cond: { $gt: ["$$price", 0] },
+              },
+            },
+            0,
+          ],
+        },
+      },
+    },
+    { $match: { primaryPrice: { $gt: 0 } } },
+    {
+      $lookup: {
+        from: CarOffer.collection.name,
+        localField: "offerId",
+        foreignField: "_id",
+        as: "offer",
+      },
+    },
+    { $unwind: "$offer" },
+    {
+      $group: {
+        _id: {
+          purchaseOption: "$purchaseOption",
+          brand: "$offer.brand",
+          model: "$offer.model",
+          date: {
+            $dateToString: {
+              date: "$fetchedAt",
+              format: "%Y-%m-%d",
+            },
+          },
+        },
+        averagePrice: { $avg: "$primaryPrice" },
+        count: { $sum: 1 },
+      },
+    },
+    { $sort: { "_id.date": 1 } },
+  ]);
+
+  const trendsByKey = new Map<string, DashboardModelPriceTrend>();
+
+  for (const row of rows) {
+    const purchaseOption = normalizePurchaseOption(row._id.purchaseOption);
+    const key = getModelTrendKey(
+      purchaseOption,
+      row._id.brand,
+      row._id.model,
+    );
+    const trend =
+      trendsByKey.get(key) ||
+      {
+        key,
+        purchaseOption,
+        brand: row._id.brand,
+        model: row._id.model,
+        label: `${row._id.brand} ${row._id.model} / ${getPurchaseOptionLabel(
+          purchaseOption,
+        )}`,
+        observations: 0,
+        points: [],
+      };
+
+    trend.observations += row.count;
+    trend.points.push({
+      date: row._id.date,
+      averagePrice: Math.round(row.averagePrice),
+      count: row.count,
+    });
+    trendsByKey.set(key, trend);
+  }
+
+  return Array.from(trendsByKey.values())
+    .filter((trend) => trend.points.length >= 2)
+    .sort(
+      (left, right) =>
+        right.observations - left.observations ||
+        right.points.length - left.points.length ||
+        left.label.localeCompare(right.label, "pl"),
+    )
+    .slice(0, maxModelTrendSeries);
+}
+
 function getPriceDelta(metric: OfferMetric) {
   if (!metric.currentPrice || !metric.previousPrice) {
     return undefined;
@@ -388,4 +528,18 @@ function normalizeAvailabilityEventType(value: unknown): AvailabilityEventType {
 function normalizeCollectorPurchaseOption(value: unknown): PurchaseOption | "all" {
   if (value === "all") return "all";
   return normalizePurchaseOption(value);
+}
+
+function getModelTrendKey(
+  purchaseOption: PurchaseOption,
+  brand: string,
+  model: string,
+) {
+  return `${purchaseOption}:${brand}:${model}`;
+}
+
+function getPurchaseOptionLabel(purchaseOption: PurchaseOption) {
+  if (purchaseOption === "sale") return "Zakup używane";
+  if (purchaseOption === "newRelease") return "Najem nowe";
+  return "Najem używane";
 }

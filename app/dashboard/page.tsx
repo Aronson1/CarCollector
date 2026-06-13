@@ -1,5 +1,7 @@
 import Link from "next/link";
+import ModelPriceTrendsChart from "./model-price-trends-chart";
 import {
+  defaultModelTrendDays,
   getDashboardStats,
   type DashboardCollectorRun,
   type DashboardStats,
@@ -8,8 +10,14 @@ import type { PurchaseOption } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
-  const stats = await getDashboardStats();
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ trendDays?: string | string[] }>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const modelTrendDays = parseTrendDays(resolvedSearchParams?.trendDays);
+  const stats = await getDashboardStats({ modelTrendDays });
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
@@ -109,6 +117,13 @@ function Dashboard({ stats }: { stats: DashboardStats }) {
         <MetricCard
           label="Śr. najem nowe"
           value={formatPrice(averagePrices.newRelease)}
+        />
+      </div>
+
+      <div className="mt-4">
+        <ModelPriceTrendsChart
+          trendDays={stats.modelTrendDays}
+          trends={stats.modelPriceTrends}
         />
       </div>
 
@@ -346,6 +361,17 @@ function getPurchaseOptionLabel(purchaseOption: PurchaseOption) {
   if (purchaseOption === "sale") return "Zakup używane";
   if (purchaseOption === "newRelease") return "Najem nowe";
   return "Najem używane";
+}
+
+function parseTrendDays(value?: string | string[]) {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const trendDays = Number(rawValue);
+
+  if (!Number.isInteger(trendDays)) {
+    return defaultModelTrendDays;
+  }
+
+  return Math.min(Math.max(trendDays, 7), 365);
 }
 
 function formatDateTime(value?: string) {
