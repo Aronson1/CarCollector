@@ -20,8 +20,14 @@ export interface PriceDelta {
 export interface DealScore {
   score: number;
   reasons: string[];
+  similarOffers?: {
+    averagePrice: number;
+    count: number;
+    priceDifferencePercent: number;
+  };
   factors: {
     price: number;
+    similarPrice: number;
     year: number;
     mileage: number;
     trend: number;

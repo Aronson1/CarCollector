@@ -599,6 +599,9 @@ function DealScoreBadge({ car }: { car: CarOfferView }) {
   if (!car.dealScore) return null;
 
   const score = car.dealScore.score;
+  const primaryReason = car.dealScore.reasons.find((reason) =>
+    reason.includes("tańsza od podobnych"),
+  );
   const className =
     score >= 80
       ? "bg-emerald-400/15 text-emerald-100 ring-emerald-400/30"
@@ -610,10 +613,11 @@ function DealScoreBadge({ car }: { car: CarOfferView }) {
 
   return (
     <span
-      className={`inline-flex min-h-6 items-center rounded px-2 py-1 text-xs font-semibold ring-1 ${className}`}
+      className={`inline-flex min-h-6 max-w-full flex-wrap items-center gap-x-1 rounded px-2 py-1 text-xs font-semibold ring-1 ${className}`}
       title={car.dealScore.reasons.join(", ")}
     >
-      Okazja {score}/100
+      <span>Okazja {score}/100</span>
+      {primaryReason && <span>· {primaryReason}</span>}
     </span>
   );
 }
