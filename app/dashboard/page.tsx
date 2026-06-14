@@ -53,6 +53,12 @@ export default async function DashboardPage({
             >
               Ustawienia
             </Link>
+            <Link
+              className="min-h-12 rounded border border-slate-700 px-4 py-3 text-center text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100"
+              href="/help"
+            >
+              Pomoc
+            </Link>
           </div>
         </header>
 

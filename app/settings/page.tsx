@@ -220,6 +220,7 @@ export default function SettingsPage() {
             <NavLink href="/">Panel ofert</NavLink>
             <NavLink href="/watchlist">Watchlista</NavLink>
             <NavLink href="/dashboard">Dashboard</NavLink>
+            <NavLink href="/help">Pomoc</NavLink>
           </div>
         </header>
 
