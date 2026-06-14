@@ -4,7 +4,6 @@ import type { CarFilterOptions, CarSearchResult } from "@/lib/services/cars";
 import type { PurchaseOption } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
 
 const initialPurchaseOption: PurchaseOption = "release";
 
