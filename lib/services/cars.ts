@@ -185,11 +185,6 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
   }
 
   const offers = (await CarOffer.find(query).lean()) as LeanCarOffer[];
-  const offerIds = offers.map((offer) => offer._id);
-  const [recentHistories, recentAvailabilityEvents] = await Promise.all([
-    getRecentHistories(offerIds, 2),
-    getRecentAvailabilityEvents(offerIds, 5),
-  ]);
   const latestListUpdate = offers.reduce<Date | undefined>((latest, offer) => {
     const updatedAt = offer.updatedAt;
 
@@ -198,6 +193,64 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
 
     return latest;
   }, undefined);
+  const sort = filters.sort || "newest";
+  const settings = await getAppSettings();
+
+  if (canUseFastOfferPagination(filters, sort)) {
+    const filteredOffers = offers.filter((offer) => {
+      if (
+        filters.availableOnly &&
+        getCarAvailabilityStatus(offer) !== "available"
+      ) {
+        return false;
+      }
+      if (filters.watchlistedOnly && !offer.isWatchlisted) return false;
+      return true;
+    });
+    const sortedOffers = sortLeanOffers(filteredOffers, sort);
+    const total = sortedOffers.length;
+    const pageSize = filters.pageSize || 30;
+
+    if (pageSize === "all") {
+      const views = sortedOffers.map((offer) =>
+        buildCarView(offer, purchaseOption, [], []),
+      );
+      const hydratedCars = await hydrateFullHistories(views, sortedOffers);
+
+      return {
+        cars: applyDealScores(hydratedCars, settings.dealScoreWeights),
+        total,
+        page: 1,
+        pageSize,
+        totalPages: 1,
+        listUpdatedAt: latestListUpdate?.toISOString(),
+      };
+    }
+
+    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(Math.max(filters.page || 1, 1), totalPages);
+    const start = (page - 1) * pageSize;
+    const pageOffers = sortedOffers.slice(start, start + pageSize);
+    const pageViews = pageOffers.map((offer) =>
+      buildCarView(offer, purchaseOption, [], []),
+    );
+    const hydratedPageCars = await hydrateFullHistories(pageViews, pageOffers);
+
+    return {
+      cars: applyDealScores(hydratedPageCars, settings.dealScoreWeights),
+      total,
+      page,
+      pageSize,
+      totalPages,
+      listUpdatedAt: latestListUpdate?.toISOString(),
+    };
+  }
+
+  const offerIds = offers.map((offer) => offer._id);
+  const [recentHistories, recentAvailabilityEvents] = await Promise.all([
+    getRecentHistories(offerIds, 2),
+    getRecentAvailabilityEvents(offerIds, 5),
+  ]);
 
   const views = offers.map((offer) =>
     buildCarView(
@@ -208,14 +261,12 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
     ),
   );
 
-  const settings = await getAppSettings();
   const filteredViews = views.filter((view) => {
     if (filters.changedOnly && !view.hasPriceChanged) return false;
     if (filters.availableOnly && !view.isAvailable) return false;
     if (filters.watchlistedOnly && !view.isWatchlisted) return false;
     return true;
   });
-  const sort = filters.sort || "newest";
   const sortableViews =
     sort === "dealScoreDesc"
       ? applyDealScores(filteredViews, settings.dealScoreWeights)
@@ -442,6 +493,36 @@ function sortStrings(values: unknown[]): string[] {
   return values
     .filter((value): value is string => typeof value === "string" && value.length > 0)
     .sort((left, right) => left.localeCompare(right, "pl"));
+}
+
+function canUseFastOfferPagination(
+  filters: GetCarsFilters,
+  sort: NonNullable<GetCarsFilters["sort"]>,
+): boolean {
+  return !filters.changedOnly && (sort === "newest" || sort === "oldest");
+}
+
+function sortLeanOffers(
+  offers: LeanCarOffer[],
+  sort: NonNullable<GetCarsFilters["sort"]>,
+): LeanCarOffer[] {
+  return [...offers].sort((left, right) => {
+    const leftTimestamp = getOfferSortTimestamp(left);
+    const rightTimestamp = getOfferSortTimestamp(right);
+
+    return sort === "oldest"
+      ? leftTimestamp - rightTimestamp
+      : rightTimestamp - leftTimestamp;
+  });
+}
+
+function getOfferSortTimestamp(offer: LeanCarOffer): number {
+  return (
+    offer.updatedAt?.getTime() ||
+    offer.rawUpdatedAt?.getTime() ||
+    offer.rawCreatedAt?.getTime() ||
+    0
+  );
 }
 
 function sortCars(
