@@ -71,56 +71,6 @@ test("rewards higher power when other deal factors are comparable", () => {
   assert.ok(stronger.dealScore.reasons.includes("wysoka moc"));
 });
 
-test("compares offers against similar cars in the same market segment", () => {
-  const [deal] = applyDealScores([
-    createCar({
-      fullName: "Cheap Octavia",
-      brand: "Skoda",
-      model: "Octavia",
-      latestPrices: [1000],
-      registrationYear: 2023,
-      mileage: 45000,
-      powerHp: 150,
-    }),
-    createCar({
-      fullName: "Peer Octavia 1",
-      brand: "Skoda",
-      model: "Octavia",
-      latestPrices: [1163],
-      registrationYear: 2022,
-      mileage: 52000,
-      powerHp: 150,
-    }),
-    createCar({
-      fullName: "Peer Octavia 2",
-      brand: "Skoda",
-      model: "Octavia",
-      latestPrices: [1163],
-      registrationYear: 2024,
-      mileage: 38000,
-      powerHp: 160,
-    }),
-    createCar({
-      fullName: "Different financing Octavia",
-      brand: "Skoda",
-      model: "Octavia",
-      purchaseOption: "sale",
-      latestPrices: [900],
-      registrationYear: 2023,
-      mileage: 45000,
-      powerHp: 150,
-    }),
-  ]);
-
-  assert.ok(deal.dealScore);
-  assert.equal(deal.dealScore.similarOffers?.count, 2);
-  assert.equal(deal.dealScore.similarOffers?.averagePrice, 1163);
-  assert.equal(deal.dealScore.similarOffers?.priceDifferencePercent, -14);
-  assert.ok(
-    deal.dealScore.reasons.includes("14% tańsza od podobnych ofert"),
-  );
-});
-
 test("does not use equipment in deal scoring", () => {
   const [equipped, basic] = applyDealScores([
     createCar({
@@ -157,11 +107,8 @@ test("does not use equipment in deal scoring", () => {
 });
 
 function createCar({
-  brand = "Codex",
   fullName = "Car",
   latestPrices,
-  model = "Deal",
-  purchaseOption = "release",
   registrationYear = 2024,
   mileage = 30000,
   powerHp,
@@ -169,11 +116,8 @@ function createCar({
   priceDelta,
   priceHistory,
 }: {
-  brand?: string;
   fullName?: string;
   latestPrices: number[];
-  model?: string;
-  purchaseOption?: CarOfferView["purchaseOption"];
   registrationYear?: number;
   mileage?: number;
   powerHp?: number;
@@ -184,13 +128,13 @@ function createCar({
   return {
     id: fullName,
     source: "arval",
-    purchaseOption,
+    purchaseOption: "release",
     externalId: fullName,
     imageUrls: [],
     equipmentItems,
     fullName,
-    brand,
-    model,
+    brand: "Codex",
+    model: "Deal",
     details: {
       registrationYear,
       mileage,

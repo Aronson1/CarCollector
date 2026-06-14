@@ -359,10 +359,6 @@ export default function SettingsPage() {
                 Wagi po zapisie są normalizowane do sumy 1. Ostatnia zmiana:{" "}
                 {formatDateTime(status?.settings.updatedAt)}
               </p>
-              <p className="text-xs leading-5 text-slate-500">
-                Waga ceny obejmuje globalną taniość w wynikach oraz porównanie
-                do podobnych ofert tej samej marki, modelu i typu finansowania.
-              </p>
             </div>
           </div>
         </section>

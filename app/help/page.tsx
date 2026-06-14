@@ -131,7 +131,7 @@ const featureGroups = [
       {
         name: "Konfiguracja oceny okazji",
         description:
-          "Można ustawić próg powiadomień push oraz wagi ceny, mocy i rocznika używane przy wyliczaniu punktacji okazji. Czynnik ceny uwzględnia też porównanie do podobnych ofert tej samej marki, modelu i typu finansowania.",
+          "Można ustawić próg powiadomień push oraz wagi ceny, mocy i rocznika używane przy wyliczaniu punktacji okazji.",
       },
       {
         name: "Historia powiadomień",
@@ -163,7 +163,7 @@ const featureGroups = [
       {
         name: "Ocena okazji",
         description:
-          "Oferty dostają punktację 0-100 na podstawie ceny, mocy i rocznika. Cena jest wzmacniana porównaniem do podobnych ofert, więc karta może wskazać np. że auto jest 14% tańsze od porównywalnych.",
+          "Oferty dostają punktację 0-100 na podstawie ceny, mocy, rocznika i innych sygnałów, a wynik jest widoczny na kartach aut.",
       },
       {
         name: "Alerty push",
