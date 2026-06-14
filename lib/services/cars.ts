@@ -1,5 +1,5 @@
 import { connectToDatabase } from "../db";
-import { applyDealScores, applyDealScoresWithContext } from "../deals";
+import { applyDealScores } from "../deals";
 import { getCarAvailabilityStatus } from "../availability";
 import { AvailabilityEvent, CarOffer, PriceSnapshot } from "../models/car";
 import { parsePowerHp } from "../power";
@@ -209,33 +209,20 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
   );
 
   const settings = await getAppSettings();
-  const filteredViews = views.filter((view) => {
+  const scoredViews = applyDealScores(views, settings.dealScoreWeights);
+  const filteredViews = scoredViews.filter((view) => {
     if (filters.changedOnly && !view.hasPriceChanged) return false;
     if (filters.availableOnly && !view.isAvailable) return false;
     if (filters.watchlistedOnly && !view.isWatchlisted) return false;
     return true;
   });
-  const sort = filters.sort || "newest";
-  const sortableViews =
-    sort === "dealScoreDesc"
-      ? applyDealScores(filteredViews, settings.dealScoreWeights)
-      : filteredViews;
-  const sortedViews = sortCars(sortableViews, sort);
+  const sortedViews = sortCars(filteredViews, filters.sort || "newest");
   const total = sortedViews.length;
   const pageSize = filters.pageSize || 30;
 
   if (pageSize === "all") {
-    const hydratedCars = await hydrateFullHistories(sortedViews, offers);
-
     return {
-      cars:
-        sort === "dealScoreDesc"
-          ? hydratedCars
-          : applyDealScoresWithContext(
-              filteredViews,
-              hydratedCars,
-              settings.dealScoreWeights,
-            ),
+      cars: await hydrateFullHistories(sortedViews, offers),
       total,
       page: 1,
       pageSize,
@@ -248,17 +235,9 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
   const page = Math.min(Math.max(filters.page || 1, 1), totalPages);
   const start = (page - 1) * pageSize;
   const pageCars = sortedViews.slice(start, start + pageSize);
-  const hydratedPageCars = await hydrateFullHistories(pageCars, offers);
 
   return {
-    cars:
-      sort === "dealScoreDesc"
-        ? hydratedPageCars
-        : applyDealScoresWithContext(
-            filteredViews,
-            hydratedPageCars,
-            settings.dealScoreWeights,
-          ),
+    cars: await hydrateFullHistories(pageCars, offers),
     total,
     page,
     pageSize,

@@ -29,17 +29,9 @@ export function applyDealScores(
   cars: CarOfferView[],
   scoreWeights: DealScoreWeights = defaultDealScoreWeights,
 ): CarOfferView[] {
-  return applyDealScoresWithContext(cars, cars, scoreWeights);
-}
+  const stats = getDealStats(cars);
 
-export function applyDealScoresWithContext(
-  contextCars: CarOfferView[],
-  targetCars: CarOfferView[],
-  scoreWeights: DealScoreWeights = defaultDealScoreWeights,
-): CarOfferView[] {
-  const stats = getDealStats(contextCars);
-
-  return targetCars.map((car) => ({
+  return cars.map((car) => ({
     ...car,
     dealScore: calculateDealScore(car, stats, scoreWeights),
   }));
@@ -161,21 +153,17 @@ function getSimilarOfferComparisons(
 ): Map<string, SimilarOfferComparison> {
   const comparisons = new Map<string, SimilarOfferComparison>();
   const pricedCars = cars.filter((car) => currentPrice(car));
-  const groups = new Map<string, CarOfferView[]>();
 
   for (const car of pricedCars) {
-    const key = getMarketSegmentKey(car);
-    const group = groups.get(key) || [];
-    group.push(car);
-    groups.set(key, group);
-  }
-
-  for (const car of pricedCars) {
-    const segmentPeers = groups.get(getMarketSegmentKey(car)) || [];
-    const strictPeers = segmentPeers.filter(
-      (peer) => peer.id !== car.id && hasSimilarDetails(car, peer),
+    const strictPeers = pricedCars.filter(
+      (peer) =>
+        peer.id !== car.id &&
+        isSameMarketSegment(car, peer) &&
+        hasSimilarDetails(car, peer),
     );
-    const fallbackPeers = segmentPeers.filter((peer) => peer.id !== car.id);
+    const fallbackPeers = pricedCars.filter(
+      (peer) => peer.id !== car.id && isSameMarketSegment(car, peer),
+    );
     const peers = strictPeers.length >= 2 ? strictPeers : fallbackPeers;
     const price = currentPrice(car);
     const peerPrices = peers
@@ -201,12 +189,12 @@ function getSimilarOfferComparisons(
   return comparisons;
 }
 
-function getMarketSegmentKey(car: CarOfferView): string {
-  return [
-    car.purchaseOption,
-    normalizeText(car.brand),
-    normalizeText(car.model),
-  ].join(":");
+function isSameMarketSegment(left: CarOfferView, right: CarOfferView): boolean {
+  return (
+    left.purchaseOption === right.purchaseOption &&
+    normalizeText(left.brand) === normalizeText(right.brand) &&
+    normalizeText(left.model) === normalizeText(right.model)
+  );
 }
 
 function hasSimilarDetails(left: CarOfferView, right: CarOfferView): boolean {
