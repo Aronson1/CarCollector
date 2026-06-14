@@ -1,5 +1,6 @@
 import { connectToDatabase } from "../db";
 import { applyDealScores } from "../deals";
+import { getCarAvailabilityStatus } from "../availability";
 import { AvailabilityEvent, CarOffer, PriceSnapshot } from "../models/car";
 import { parsePowerHp } from "../power";
 import {
@@ -288,7 +289,8 @@ function buildCarView(
   availabilityHistory: AvailabilityEventView[],
 ): CarOfferView {
   const latest = history.at(-1);
-  const isAvailable = getOfferAvailability(offer);
+  const availabilityStatus = getCarAvailabilityStatus(offer);
+  const isAvailable = availabilityStatus === "available";
 
   return {
     id: String(offer._id),
@@ -312,6 +314,7 @@ function buildCarView(
     latestFetchedAt: latest?.fetchedAt,
     priceDelta: getPrimaryPriceDelta(history.map((snapshot) => snapshot.prices)),
     isAvailable,
+    availabilityStatus,
     availableSince: offer.availableSince?.toISOString(),
     unavailableSince: offer.unavailableSince?.toISOString(),
     lastSeenAt: offer.lastSeenAt?.toISOString(),
@@ -668,37 +671,6 @@ function comparePriceDelta(
   if (rightDelta === undefined) return -1;
 
   return direction === "asc" ? leftDelta - rightDelta : rightDelta - leftDelta;
-}
-
-function getOfferAvailability(offer: LeanCarOffer): boolean {
-  if (typeof offer.isAvailable === "boolean") {
-    return offer.isAvailable;
-  }
-
-  return isOfferAvailableFromRawData(offer.rawData);
-}
-
-function isOfferAvailableFromRawData(rawData: unknown): boolean {
-  if (!rawData || typeof rawData !== "object") {
-    return false;
-  }
-
-  const record = rawData as {
-    reservationLabelCode?: unknown;
-    status?: unknown;
-  };
-
-  if (
-    typeof record.reservationLabelCode === "string" &&
-    record.reservationLabelCode.toLowerCase() === "available"
-  ) {
-    return true;
-  }
-
-  return (
-    typeof record.status === "string" &&
-    record.status.toLowerCase() === "published"
-  );
 }
 
 function sanitizeDetails(details: {

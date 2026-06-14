@@ -8,6 +8,8 @@ export type AvailabilityEventType = "firstSeen" | "returned" | "disappeared";
 
 export type AvailabilityStatus = "available" | "unavailable";
 
+export type CarAvailabilityStatus = "available" | "reserved" | "disappeared";
+
 export interface PriceDelta {
   amount: number;
   percent: number;
@@ -69,6 +71,7 @@ export interface CarOfferView {
   priceDelta?: PriceDelta;
   dealScore?: DealScore;
   isAvailable: boolean;
+  availabilityStatus: CarAvailabilityStatus;
   availableSince?: string;
   unavailableSince?: string;
   lastSeenAt?: string;

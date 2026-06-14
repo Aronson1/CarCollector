@@ -17,6 +17,7 @@ import {
   Title,
   Tooltip,
 } from "chart.js";
+import { formatAvailabilitySummary } from "@/lib/availability-format";
 import type { CarOfferView, PurchaseOption } from "@/lib/types";
 
 ChartJS.register(
@@ -1156,7 +1157,19 @@ export default function HomeClient({
 }
 
 function AvailabilityBadge({ car }: { car: CarOfferView }) {
-  if (!car.isAvailable) {
+  const status =
+    car.availabilityStatus || (car.isAvailable ? "available" : "disappeared");
+
+  if (status === "reserved") {
+    return (
+      <span className="inline-flex min-h-6 items-center gap-1.5 rounded bg-orange-300/15 px-2 py-1 text-xs font-semibold text-orange-100 ring-1 ring-orange-300/30">
+        <span className="h-1.5 w-1.5 rounded-full bg-orange-300" />
+        Zarezerwowana
+      </span>
+    );
+  }
+
+  if (status === "disappeared") {
     return (
       <span className="inline-flex min-h-6 items-center gap-1.5 rounded bg-amber-300/15 px-2 py-1 text-xs font-semibold text-amber-100 ring-1 ring-amber-300/30">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
@@ -1586,18 +1599,6 @@ function formatNewRentalDetails(details: CarOfferView["details"]) {
   ].filter(Boolean);
 
   return values.length > 0 ? values.join(" / ") : "-";
-}
-
-function formatAvailabilitySummary(car: CarOfferView) {
-  if (car.isAvailable) {
-    return car.availableSince
-      ? `od ${formatDate(car.availableSince)}`
-      : "dostępna";
-  }
-
-  return car.unavailableSince
-    ? `zniknęła ${formatDate(car.unavailableSince)}`
-    : "zniknęła";
 }
 
 function formatAvailabilityEventType(

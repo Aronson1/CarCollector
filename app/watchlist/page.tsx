@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 import Link from "next/link";
 import LinearProgress from "@mui/material/LinearProgress";
+import { formatAvailabilitySummary } from "@/lib/availability-format";
 import type { CarOfferView, PurchaseOption } from "@/lib/types";
 
 type LoadState = "idle" | "loading" | "error";
@@ -562,7 +563,19 @@ function CarImageGallery({
 }
 
 function AvailabilityBadge({ car }: { car: CarOfferView }) {
-  if (!car.isAvailable) {
+  const status =
+    car.availabilityStatus || (car.isAvailable ? "available" : "disappeared");
+
+  if (status === "reserved") {
+    return (
+      <span className="inline-flex min-h-6 items-center gap-1.5 rounded bg-orange-300/15 px-2 py-1 text-xs font-semibold text-orange-100 ring-1 ring-orange-300/30">
+        <span className="h-1.5 w-1.5 rounded-full bg-orange-300" />
+        Zarezerwowana
+      </span>
+    );
+  }
+
+  if (status === "disappeared") {
     return (
       <span className="inline-flex min-h-6 items-center gap-1.5 rounded bg-amber-300/15 px-2 py-1 text-xs font-semibold text-amber-100 ring-1 ring-amber-300/30">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-300" />
@@ -673,23 +686,6 @@ function formatPowerHp(value?: number) {
 
 function formatYear(value?: number) {
   return value ? String(value) : "-";
-}
-
-function formatAvailabilitySummary(car: CarOfferView) {
-  if (car.isAvailable) {
-    return car.availableSince
-      ? `od ${formatDate(car.availableSince)}`
-      : "dostępna";
-  }
-
-  return car.unavailableSince
-    ? `zniknęła ${formatDate(car.unavailableSince)}`
-    : "zniknęła";
-}
-
-function formatDate(value?: string) {
-  if (!value) return "-";
-  return new Intl.DateTimeFormat("pl-PL").format(new Date(value));
 }
 
 function formatDateTime(value?: string) {
