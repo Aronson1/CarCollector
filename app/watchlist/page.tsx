@@ -192,6 +192,9 @@ export default function WatchlistPage() {
             <Link className={navLinkClassName} href="/settings">
               Ustawienia
             </Link>
+            <Link className={navLinkClassName} href="/help">
+              Pomoc
+            </Link>
           </div>
         </header>
 
