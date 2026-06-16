@@ -106,8 +106,40 @@ test("does not use equipment in deal scoring", () => {
   );
 });
 
+test("scores cars within their purchase option", () => {
+  const [releaseCheap, releaseExpensive, saleExpensive] = applyDealScores([
+    createCar({
+      fullName: "Release cheap",
+      purchaseOption: "release",
+      latestPrices: [1000],
+      powerHp: 150,
+    }),
+    createCar({
+      fullName: "Release expensive",
+      purchaseOption: "release",
+      latestPrices: [2000],
+      powerHp: 150,
+    }),
+    createCar({
+      fullName: "Sale expensive",
+      purchaseOption: "sale",
+      latestPrices: [100000],
+      powerHp: 150,
+    }),
+  ]);
+
+  assert.ok(releaseCheap.dealScore);
+  assert.ok(releaseExpensive.dealScore);
+  assert.ok(saleExpensive.dealScore);
+  assert.equal(releaseCheap.dealScore.factors.price, 1);
+  assert.equal(releaseExpensive.dealScore.factors.price, 0);
+  assert.equal(saleExpensive.dealScore.factors.price, 0.5);
+  assert.ok(releaseCheap.dealScore.score > releaseExpensive.dealScore.score);
+});
+
 function createCar({
   fullName = "Car",
+  purchaseOption = "release",
   latestPrices,
   registrationYear = 2024,
   mileage = 30000,
@@ -117,6 +149,7 @@ function createCar({
   priceHistory,
 }: {
   fullName?: string;
+  purchaseOption?: CarOfferView["purchaseOption"];
   latestPrices: number[];
   registrationYear?: number;
   mileage?: number;
@@ -128,7 +161,7 @@ function createCar({
   return {
     id: fullName,
     source: "arval",
-    purchaseOption: "release",
+    purchaseOption,
     externalId: fullName,
     imageUrls: [],
     equipmentItems,
@@ -157,7 +190,7 @@ function createCar({
       ]
     ).map((snapshot, index) => ({
       id: `${fullName}-${index}`,
-      purchaseOption: "release",
+      purchaseOption,
       fetchedAt: snapshot.fetchedAt,
       prices: snapshot.prices,
     })),

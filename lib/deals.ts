@@ -22,12 +22,33 @@ export function applyDealScores(
   cars: CarOfferView[],
   scoreWeights: DealScoreWeights = defaultDealScoreWeights,
 ): CarOfferView[] {
-  const stats = getDealStats(cars);
+  const statsByPurchaseOption = new Map(
+    Array.from(groupByPurchaseOption(cars), ([purchaseOption, groupCars]) => [
+      purchaseOption,
+      getDealStats(groupCars),
+    ]),
+  );
 
   return cars.map((car) => ({
     ...car,
-    dealScore: calculateDealScore(car, stats, scoreWeights),
+    dealScore: calculateDealScore(
+      car,
+      statsByPurchaseOption.get(car.purchaseOption) ?? getDealStats([car]),
+      scoreWeights,
+    ),
   }));
+}
+
+function groupByPurchaseOption(cars: CarOfferView[]) {
+  const groups = new Map<CarOfferView["purchaseOption"], CarOfferView[]>();
+
+  for (const car of cars) {
+    const groupCars = groups.get(car.purchaseOption) ?? [];
+    groupCars.push(car);
+    groups.set(car.purchaseOption, groupCars);
+  }
+
+  return groups;
 }
 
 function calculateDealScore(
