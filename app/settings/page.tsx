@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import type { DealScoreWeights, PurchaseOption } from "@/lib/types";
+import type {
+  DealPushThresholds,
+  DealScoreWeights,
+  PurchaseOption,
+} from "@/lib/types";
 
 type LoadState = "idle" | "loading" | "error";
 
@@ -14,6 +18,7 @@ interface SettingsStatus {
   };
   settings: {
     dealPushThreshold: number;
+    dealPushThresholds: DealPushThresholds;
     dealScoreWeights: DealScoreWeights;
     updatedAt?: string;
   };
@@ -51,12 +56,21 @@ const defaultWeights: DealScoreWeights = {
   year: 0.1,
 };
 
+const defaultThresholds: DealPushThresholds = {
+  release: 60,
+  sale: 60,
+  newRelease: 60,
+};
+
+const purchaseOptions: PurchaseOption[] = ["release", "sale", "newRelease"];
+
 export default function SettingsPage() {
   const [status, setStatus] = useState<SettingsStatus | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [message, setMessage] = useState("");
   const [actionKey, setActionKey] = useState<string | null>(null);
-  const [threshold, setThreshold] = useState(60);
+  const [thresholds, setThresholds] =
+    useState<DealPushThresholds>(defaultThresholds);
   const [weights, setWeights] = useState<DealScoreWeights>(defaultWeights);
 
   async function loadSettings(clearMessage = false) {
@@ -70,7 +84,7 @@ export default function SettingsPage() {
         cache: "no-store",
       });
       setStatus(payload);
-      setThreshold(payload.settings.dealPushThreshold);
+      setThresholds(getThresholds(payload.settings));
       setWeights(payload.settings.dealScoreWeights);
       setLoadState("idle");
     } catch (error) {
@@ -174,11 +188,11 @@ export default function SettingsPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dealPushThreshold: threshold,
+          dealPushThresholds: thresholds,
           dealScoreWeights: weights,
         }),
       });
-      setThreshold(payload.settings.dealPushThreshold);
+      setThresholds(getThresholds(payload.settings));
       setWeights(payload.settings.dealScoreWeights);
       setMessage("Zapisano konfigurację okazji.");
       await loadSettings();
@@ -256,9 +270,9 @@ export default function SettingsPage() {
             }
           />
           <StatusCard
-            label="Próg okazji"
-            value={`${threshold}/100`}
-            detail="Minimalna nota do powiadomienia push."
+            label="Progi okazji"
+            value={formatThresholdRange(thresholds)}
+            detail="Minimalne noty do powiadomień push."
           />
           <StatusCard
             label="Odświeżono status"
@@ -319,19 +333,21 @@ export default function SettingsPage() {
               Konfiguracja okazji
             </h2>
             <div className="mt-4 grid gap-4">
-              <label className="grid gap-2 text-sm">
-                <span className="font-semibold text-slate-200">
-                  Próg powiadomienia push
-                </span>
-                <input
-                  className="h-11 rounded border border-slate-700 bg-slate-950 px-3 text-sm text-white outline-none focus:border-cyan-400"
-                  max={100}
-                  min={1}
-                  onChange={(event) => setThreshold(Number(event.target.value))}
-                  type="number"
-                  value={threshold}
-                />
-              </label>
+              <div className="grid gap-3">
+                {purchaseOptions.map((purchaseOption) => (
+                  <ThresholdInput
+                    key={purchaseOption}
+                    label={getPurchaseOptionLabel(purchaseOption)}
+                    onChange={(value) =>
+                      setThresholds((current) => ({
+                        ...current,
+                        [purchaseOption]: value,
+                      }))
+                    }
+                    value={thresholds[purchaseOption]}
+                  />
+                ))}
+              </div>
               <WeightInput
                 label="Cena"
                 onChange={(value) => setWeights((current) => ({ ...current, price: value }))}
@@ -517,6 +533,32 @@ function WeightInput({
   );
 }
 
+function ThresholdInput({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (value: number) => void;
+  value: number;
+}) {
+  return (
+    <label className="grid gap-2 text-sm">
+      <span className="font-semibold text-slate-200">
+        {label}: {value}/100
+      </span>
+      <input
+        className="h-11 rounded border border-slate-700 bg-slate-950 px-3 text-sm text-white outline-none focus:border-cyan-400"
+        max={100}
+        min={1}
+        onChange={(event) => onChange(Number(event.target.value))}
+        type="number"
+        value={value}
+      />
+    </label>
+  );
+}
+
 async function fetchJson<TPayload extends object>(
   url: string,
   init?: RequestInit,
@@ -561,6 +603,22 @@ function formatDateTime(value?: string) {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("pl-PL").format(value);
+}
+
+function getThresholds(settings: SettingsStatus["settings"]): DealPushThresholds {
+  return settings.dealPushThresholds || {
+    release: settings.dealPushThreshold,
+    sale: settings.dealPushThreshold,
+    newRelease: settings.dealPushThreshold,
+  };
+}
+
+function formatThresholdRange(thresholds: DealPushThresholds) {
+  const values = Object.values(thresholds);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+
+  return min === max ? `${min}/100` : `${min}-${max}/100`;
 }
 
 function formatWeight(value: number) {

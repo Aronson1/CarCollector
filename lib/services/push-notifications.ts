@@ -81,7 +81,8 @@ export async function sendUsedRentalDealPushNotifications(
   const candidates = cars.filter(
     (car) =>
       (!allowedOfferIds || allowedOfferIds.has(car.id)) &&
-      (car.dealScore?.score ?? 0) >= settings.dealPushThreshold,
+      (car.dealScore?.score ?? 0) >=
+        settings.dealPushThresholds.release,
   );
 
   if (candidates.length === 0) {
