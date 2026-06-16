@@ -164,6 +164,11 @@ const appSettingSchema = new Schema(
   {
     key: { type: String, required: true, unique: true, index: true },
     dealPushThreshold: { type: Number, default: 60 },
+    dealPushThresholds: {
+      release: { type: Number, default: 60 },
+      sale: { type: Number, default: 60 },
+      newRelease: { type: Number, default: 60 },
+    },
     dealScoreWeights: {
       price: { type: Number, default: 0.45 },
       power: { type: Number, default: 0.45 },

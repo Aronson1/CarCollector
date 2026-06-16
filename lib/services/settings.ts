@@ -1,12 +1,17 @@
 import { DatabaseUnavailableError, connectToDatabase } from "../db";
 import { defaultDealScoreWeights } from "../deals";
+import { normalizeDealPushThresholds } from "../settings-utils";
 import {
   AppSetting,
   CarOffer,
   CollectorRun,
   PushSubscription,
 } from "../models/car";
-import type { DealScoreWeights, PurchaseOption } from "../types";
+import type {
+  DealPushThresholds,
+  DealScoreWeights,
+  PurchaseOption,
+} from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
 
 const settingsKey = "default";
@@ -14,6 +19,7 @@ const purchaseOptions: PurchaseOption[] = ["release", "sale", "newRelease"];
 
 export interface AppSettingsView {
   dealPushThreshold: number;
+  dealPushThresholds: DealPushThresholds;
   dealScoreWeights: DealScoreWeights;
   updatedAt?: string;
 }
@@ -57,6 +63,7 @@ export interface PushHistoryItem {
 
 export interface UpdateAppSettingsInput {
   dealPushThreshold?: unknown;
+  dealPushThresholds?: Partial<Record<PurchaseOption, unknown>>;
   dealScoreWeights?: Partial<Record<keyof DealScoreWeights, unknown>>;
 }
 
@@ -78,13 +85,16 @@ export async function updateAppSettings(
   await connectToDatabase();
 
   const current = await getAppSettings();
+  const dealPushThresholds = normalizeDealPushThresholds(
+    {
+      ...current.dealPushThresholds,
+      ...parseDealPushThresholdsInput(input.dealPushThresholds),
+    },
+    clampInteger(input.dealPushThreshold, current.dealPushThreshold, 1, 100),
+  );
   const nextSettings: AppSettingsView = {
-    dealPushThreshold: clampInteger(
-      input.dealPushThreshold,
-      current.dealPushThreshold,
-      1,
-      100,
-    ),
+    dealPushThreshold: dealPushThresholds.release,
+    dealPushThresholds,
     dealScoreWeights: normalizeWeights({
       ...current.dealScoreWeights,
       ...parseWeightInput(input.dealScoreWeights),
@@ -96,6 +106,7 @@ export async function updateAppSettings(
     {
       $set: {
         dealPushThreshold: nextSettings.dealPushThreshold,
+        dealPushThresholds: nextSettings.dealPushThresholds,
         dealScoreWeights: nextSettings.dealScoreWeights,
       },
       $setOnInsert: { key: settingsKey },
@@ -180,6 +191,7 @@ export async function getSettingsStatus(): Promise<SettingsStatus> {
       },
       settings: {
         dealPushThreshold: 60,
+        dealPushThresholds: getDefaultDealPushThresholds(60),
         dealScoreWeights: defaultDealScoreWeights,
       },
       collectors: purchaseOptions.map((purchaseOption) => ({
@@ -235,19 +247,50 @@ function getDefaultSettingsDocument() {
   return {
     key: settingsKey,
     dealPushThreshold: 60,
+    dealPushThresholds: getDefaultDealPushThresholds(60),
     dealScoreWeights: defaultDealScoreWeights,
   };
 }
 
 function mapSettings(settings: {
   dealPushThreshold?: number | null;
+  dealPushThresholds?: Partial<DealPushThresholds> | null;
   dealScoreWeights?: Partial<DealScoreWeights> | null;
   updatedAt?: Date;
 }): AppSettingsView {
+  const legacyThreshold = clampInteger(settings.dealPushThreshold, 60, 1, 100);
+  const dealPushThresholds = normalizeDealPushThresholds(
+    settings.dealPushThresholds || {},
+    legacyThreshold,
+  );
+
   return {
-    dealPushThreshold: clampInteger(settings.dealPushThreshold, 60, 1, 100),
+    dealPushThreshold: dealPushThresholds.release,
+    dealPushThresholds,
     dealScoreWeights: normalizeWeights(settings.dealScoreWeights || {}),
     updatedAt: settings.updatedAt?.toISOString(),
+  };
+}
+
+function parseDealPushThresholdsInput(
+  thresholds: UpdateAppSettingsInput["dealPushThresholds"],
+): Partial<DealPushThresholds> {
+  if (!thresholds || typeof thresholds !== "object") {
+    return {};
+  }
+
+  return {
+    release: parseFiniteNumber(thresholds.release),
+    sale: parseFiniteNumber(thresholds.sale),
+    newRelease: parseFiniteNumber(thresholds.newRelease),
+  };
+}
+
+function getDefaultDealPushThresholds(value: number): DealPushThresholds {
+  return {
+    release: value,
+    sale: value,
+    newRelease: value,
   };
 }
 

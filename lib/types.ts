@@ -36,6 +36,8 @@ export interface DealScoreWeights {
   year: number;
 }
 
+export type DealPushThresholds = Record<PurchaseOption, number>;
+
 export interface CarDetails {
   mileage?: number;
   annualMileage?: number;
