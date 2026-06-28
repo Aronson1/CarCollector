@@ -6,6 +6,12 @@
     "app/api/cars/filters/route.ts": {
       "maxDuration": 60
     },
+    "app/api/cayenne/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/cayenne/collector/run/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/collector/run/route.ts": {
       "maxDuration": 60
     }
@@ -14,6 +20,10 @@
     {
       "path": "/api/collector/run",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cayenne/collector/run",
+      "schedule": "15 8 * * *"
     }
   ]
 }

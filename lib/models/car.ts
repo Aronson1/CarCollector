@@ -174,6 +174,30 @@ const appSettingSchema = new Schema(
       power: { type: Number, default: 0.45 },
       year: { type: Number, default: 0.1 },
     },
+    dealScoreWeightsByPurchaseOption: {
+      release: {
+        price: { type: Number, default: 0.45 },
+        power: { type: Number, default: 0.45 },
+        year: { type: Number, default: 0.1 },
+      },
+      sale: {
+        price: { type: Number, default: 0.45 },
+        power: { type: Number, default: 0.45 },
+        year: { type: Number, default: 0.1 },
+      },
+      newRelease: {
+        price: { type: Number, default: 0.45 },
+        power: { type: Number, default: 0.45 },
+        year: { type: Number, default: 0.1 },
+      },
+    },
+    cayenneDealPushThreshold: { type: Number, default: 75 },
+    cayenneDealScoreWeights: {
+      vatFinancing: { type: Number, default: 0.3 },
+      price: { type: Number, default: 0.3 },
+      accidentFree: { type: Number, default: 0.2 },
+      mileage: { type: Number, default: 0.2 },
+    },
   },
   { timestamps: true },
 );

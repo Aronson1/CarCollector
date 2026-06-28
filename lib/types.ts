@@ -37,6 +37,10 @@ export interface DealScoreWeights {
 }
 
 export type DealPushThresholds = Record<PurchaseOption, number>;
+export type DealScoreWeightsByPurchaseOption = Record<
+  PurchaseOption,
+  DealScoreWeights
+>;
 
 export interface CarDetails {
   mileage?: number;

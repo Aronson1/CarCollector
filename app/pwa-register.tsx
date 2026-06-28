@@ -10,7 +10,13 @@ export function PwaRegister() {
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
-    if (process.env.NODE_ENV !== "production") return;
+
+    if (process.env.NODE_ENV !== "production") {
+      void cleanupDevelopmentServiceWorkers().catch((error) => {
+        console.error("Development service worker cleanup failed", error);
+      });
+      return;
+    }
 
     const registerServiceWorker = () => {
       navigator.serviceWorker
@@ -108,6 +114,20 @@ export function PwaRegister() {
       {isSaving ? "Włączanie alertów..." : "Włącz alerty okazji"}
     </button>
   );
+}
+
+async function cleanupDevelopmentServiceWorkers() {
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registrations.map((registration) => registration.unregister()));
+
+  if ("caches" in window) {
+    const cacheNames = await window.caches.keys();
+    await Promise.all(
+      cacheNames
+        .filter((cacheName) => cacheName.startsWith("car-collector-"))
+        .map((cacheName) => window.caches.delete(cacheName)),
+    );
+  }
 }
 
 function urlBase64ToArrayBuffer(value: string): ArrayBuffer {

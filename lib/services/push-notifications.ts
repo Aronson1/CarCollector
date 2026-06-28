@@ -1,6 +1,13 @@
 import webPush, { type PushSubscription as WebPushSubscription } from "web-push";
 import { connectToDatabase } from "../db";
 import { CarOffer, PushSubscription } from "../models/car";
+import { CayenneOffer } from "../models/cayenne";
+import {
+  applyCayenneDealScores,
+  buildCayenneOfferView,
+  type CayenneOfferView,
+  type LeanCayenneOffer,
+} from "../cayenne";
 import type { CarOfferView } from "../types";
 import { getCars } from "./cars";
 import { getAppSettings } from "./settings";
@@ -108,12 +115,73 @@ export async function sendUsedRentalDealPushNotifications(
   return sent;
 }
 
+export async function sendCayenneDealPushNotifications(): Promise<number> {
+  if (!configureWebPush()) {
+    return 0;
+  }
+
+  const settings = await getAppSettings();
+  const offers = (await CayenneOffer.find({
+    isAvailable: { $ne: false },
+    isDamaged: { $ne: true },
+    isImportOffer: { $ne: true },
+    hasDealRisk: { $ne: true },
+    year: { $gte: 2010 },
+  })
+    .sort({ firstSeenAt: -1 })
+    .lean()) as LeanCayenneOffer[];
+
+  const candidates = applyCayenneDealScores(
+    offers.map((offer) => buildCayenneOfferView(offer, [])),
+    settings.cayenneDealScoreWeights,
+  ).filter(
+    (offer) =>
+      (offer.dealScore?.score ?? 0) >= settings.cayenneDealPushThreshold,
+  );
+
+  if (candidates.length === 0) {
+    return 0;
+  }
+
+  const alreadyNotified = await getAlreadyNotifiedCayenneOfferIds(candidates);
+  let sent = 0;
+
+  for (const offer of candidates) {
+    if (alreadyNotified.has(offer.id)) {
+      continue;
+    }
+
+    const delivered = await sendCayenneDealPushNotification(offer);
+
+    if (delivered > 0) {
+      sent += delivered;
+      await markCayenneDealPushNotified(offer);
+    }
+  }
+
+  return sent;
+}
+
 async function getAlreadyNotifiedOfferIds(
   cars: CarOfferView[],
 ): Promise<Set<string>> {
   const notifiedOffers = await CarOffer.find(
     {
       _id: { $in: cars.map((car) => car.id) },
+      dealPushNotifiedAt: { $exists: true },
+    },
+    { _id: 1 },
+  ).lean();
+
+  return new Set(notifiedOffers.map((offer) => String(offer._id)));
+}
+
+async function getAlreadyNotifiedCayenneOfferIds(
+  offers: CayenneOfferView[],
+): Promise<Set<string>> {
+  const notifiedOffers = await CayenneOffer.find(
+    {
+      _id: { $in: offers.map((offer) => offer.id) },
       dealPushNotifiedAt: { $exists: true },
     },
     { _id: 1 },
@@ -162,6 +230,48 @@ async function sendDealPushNotification(car: CarOfferView): Promise<number> {
   return delivered;
 }
 
+async function sendCayenneDealPushNotification(
+  offer: CayenneOfferView,
+): Promise<number> {
+  const subscriptions = await PushSubscription.find({}).lean();
+
+  if (subscriptions.length === 0) {
+    return 0;
+  }
+
+  const payload = JSON.stringify(getCayenneDealPushPayload(offer));
+  let delivered = 0;
+
+  await Promise.all(
+    subscriptions.map(async (subscription) => {
+      if (!subscription.keys) {
+        return;
+      }
+
+      try {
+        await webPush.sendNotification(
+          {
+            endpoint: subscription.endpoint,
+            expirationTime: subscription.expirationTime ?? null,
+            keys: subscription.keys,
+          },
+          payload,
+        );
+        delivered += 1;
+      } catch (error) {
+        if (isExpiredPushSubscriptionError(error)) {
+          await PushSubscription.deleteOne({ _id: subscription._id });
+          return;
+        }
+
+        console.error("Cayenne deal push notification failed", error);
+      }
+    }),
+  );
+
+  return delivered;
+}
+
 async function markDealPushNotified(car: CarOfferView) {
   await CarOffer.updateOne(
     { _id: car.id },
@@ -169,6 +279,18 @@ async function markDealPushNotified(car: CarOfferView) {
       $set: {
         dealPushNotifiedAt: new Date(),
         dealPushNotifiedScore: car.dealScore?.score ?? null,
+      },
+    },
+  );
+}
+
+async function markCayenneDealPushNotified(offer: CayenneOfferView) {
+  await CayenneOffer.updateOne(
+    { _id: offer.id },
+    {
+      $set: {
+        dealPushNotifiedAt: new Date(),
+        dealPushNotifiedScore: offer.dealScore?.score ?? null,
       },
     },
   );
@@ -188,6 +310,24 @@ function getDealPushPayload(car: CarOfferView): DealPushPayload {
     body: `${car.fullName} - ${parts.join(" | ")}`,
     url: car.offerUrl || `/?purchaseOption=release&id=${car.externalId}`,
     tag: `used-rental-deal-${car.externalId}`,
+  };
+}
+
+function getCayenneDealPushPayload(offer: CayenneOfferView): DealPushPayload {
+  const score = offer.dealScore?.score ?? 0;
+  const parts = [
+    `Ocena ${score}/100`,
+    formatPrice(offer.price),
+    offer.mileageKm ? `${formatPrice(offer.mileageKm)} km` : undefined,
+    offer.hasVatInvoice ? "Faktura VAT" : undefined,
+    offer.hasFinancing ? "finansowanie" : undefined,
+  ].filter(Boolean);
+
+  return {
+    title: "Porsche Cayenne: dobra oferta",
+    body: `${offer.title} - ${parts.join(" | ")}`,
+    url: offer.offerUrl || `/cayenne?id=${offer.externalId}`,
+    tag: `cayenne-deal-${offer.externalId}`,
   };
 }
 

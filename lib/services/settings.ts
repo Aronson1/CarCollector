@@ -1,5 +1,10 @@
 import { DatabaseUnavailableError, connectToDatabase } from "../db";
 import { defaultDealScoreWeights } from "../deals";
+import {
+  defaultCayenneDealScoreWeights,
+  normalizeCayenneDealScoreWeights,
+  type CayenneDealScoreWeights,
+} from "../cayenne";
 import { normalizeDealPushThresholds } from "../settings-utils";
 import {
   AppSetting,
@@ -7,9 +12,11 @@ import {
   CollectorRun,
   PushSubscription,
 } from "../models/car";
+import { CayenneOffer } from "../models/cayenne";
 import type {
   DealPushThresholds,
   DealScoreWeights,
+  DealScoreWeightsByPurchaseOption,
   PurchaseOption,
 } from "../types";
 import { ensurePurchaseOptionMigration } from "./migrations";
@@ -21,6 +28,9 @@ export interface AppSettingsView {
   dealPushThreshold: number;
   dealPushThresholds: DealPushThresholds;
   dealScoreWeights: DealScoreWeights;
+  dealScoreWeightsByPurchaseOption: DealScoreWeightsByPurchaseOption;
+  cayenneDealPushThreshold: number;
+  cayenneDealScoreWeights: CayenneDealScoreWeights;
   updatedAt?: string;
 }
 
@@ -56,6 +66,7 @@ export interface PushHistoryItem {
   id: string;
   externalId: string;
   fullName: string;
+  source: "arval" | "cayenne";
   score?: number;
   notifiedAt: string;
   offerUrl?: string;
@@ -65,6 +76,13 @@ export interface UpdateAppSettingsInput {
   dealPushThreshold?: unknown;
   dealPushThresholds?: Partial<Record<PurchaseOption, unknown>>;
   dealScoreWeights?: Partial<Record<keyof DealScoreWeights, unknown>>;
+  dealScoreWeightsByPurchaseOption?: Partial<
+    Record<PurchaseOption, Partial<Record<keyof DealScoreWeights, unknown>>>
+  >;
+  cayenneDealPushThreshold?: unknown;
+  cayenneDealScoreWeights?: Partial<
+    Record<keyof CayenneDealScoreWeights, unknown>
+  >;
 }
 
 export async function getAppSettings(): Promise<AppSettingsView> {
@@ -92,12 +110,25 @@ export async function updateAppSettings(
     },
     clampInteger(input.dealPushThreshold, current.dealPushThreshold, 1, 100),
   );
+  const dealScoreWeightsByPurchaseOption = normalizeWeightsByPurchaseOption(
+    current.dealScoreWeightsByPurchaseOption,
+    input.dealScoreWeightsByPurchaseOption,
+    input.dealScoreWeights,
+  );
   const nextSettings: AppSettingsView = {
     dealPushThreshold: dealPushThresholds.release,
     dealPushThresholds,
-    dealScoreWeights: normalizeWeights({
-      ...current.dealScoreWeights,
-      ...parseWeightInput(input.dealScoreWeights),
+    dealScoreWeights: dealScoreWeightsByPurchaseOption.release,
+    dealScoreWeightsByPurchaseOption,
+    cayenneDealPushThreshold: clampInteger(
+      input.cayenneDealPushThreshold,
+      current.cayenneDealPushThreshold,
+      1,
+      100,
+    ),
+    cayenneDealScoreWeights: normalizeCayenneDealScoreWeights({
+      ...current.cayenneDealScoreWeights,
+      ...parseCayenneWeightInput(input.cayenneDealScoreWeights),
     }),
   };
 
@@ -108,6 +139,10 @@ export async function updateAppSettings(
         dealPushThreshold: nextSettings.dealPushThreshold,
         dealPushThresholds: nextSettings.dealPushThresholds,
         dealScoreWeights: nextSettings.dealScoreWeights,
+        dealScoreWeightsByPurchaseOption:
+          nextSettings.dealScoreWeightsByPurchaseOption,
+        cayenneDealPushThreshold: nextSettings.cayenneDealPushThreshold,
+        cayenneDealScoreWeights: nextSettings.cayenneDealScoreWeights,
       },
       $setOnInsert: { key: settingsKey },
     },
@@ -193,6 +228,10 @@ export async function getSettingsStatus(): Promise<SettingsStatus> {
         dealPushThreshold: 60,
         dealPushThresholds: getDefaultDealPushThresholds(60),
         dealScoreWeights: defaultDealScoreWeights,
+        dealScoreWeightsByPurchaseOption:
+          getDefaultDealScoreWeightsByPurchaseOption(defaultDealScoreWeights),
+        cayenneDealPushThreshold: 75,
+        cayenneDealScoreWeights: defaultCayenneDealScoreWeights,
       },
       collectors: purchaseOptions.map((purchaseOption) => ({
         purchaseOption,
@@ -227,7 +266,7 @@ async function getPushHistory(): Promise<PushHistoryItem[]> {
     .limit(20)
     .lean();
 
-  return offers.flatMap((offer) => {
+  const arvalHistory = offers.flatMap((offer) => {
     if (!offer.dealPushNotifiedAt) {
       return [];
     }
@@ -236,11 +275,51 @@ async function getPushHistory(): Promise<PushHistoryItem[]> {
       id: String(offer._id),
       externalId: offer.externalId,
       fullName: offer.fullName,
+      source: "arval" as const,
       offerUrl: offer.offerUrl || undefined,
       score: offer.dealPushNotifiedScore ?? undefined,
       notifiedAt: offer.dealPushNotifiedAt.toISOString(),
     };
   });
+
+  const cayenneOffers = await CayenneOffer.find(
+    { dealPushNotifiedAt: { $exists: true } },
+    {
+      _id: 1,
+      externalId: 1,
+      title: 1,
+      offerUrl: 1,
+      dealPushNotifiedAt: 1,
+      dealPushNotifiedScore: 1,
+    },
+  )
+    .sort({ dealPushNotifiedAt: -1 })
+    .limit(20)
+    .lean();
+
+  const cayenneHistory = cayenneOffers.flatMap((offer) => {
+    if (!offer.dealPushNotifiedAt) {
+      return [];
+    }
+
+    return {
+      id: String(offer._id),
+      externalId: offer.externalId,
+      fullName: offer.title,
+      source: "cayenne" as const,
+      offerUrl: offer.offerUrl || undefined,
+      score: offer.dealPushNotifiedScore ?? undefined,
+      notifiedAt: offer.dealPushNotifiedAt.toISOString(),
+    };
+  });
+
+  return [...arvalHistory, ...cayenneHistory]
+    .sort(
+      (left, right) =>
+        new Date(right.notifiedAt).getTime() -
+        new Date(left.notifiedAt).getTime(),
+    )
+    .slice(0, 20);
 }
 
 function getDefaultSettingsDocument() {
@@ -249,6 +328,10 @@ function getDefaultSettingsDocument() {
     dealPushThreshold: 60,
     dealPushThresholds: getDefaultDealPushThresholds(60),
     dealScoreWeights: defaultDealScoreWeights,
+    dealScoreWeightsByPurchaseOption:
+      getDefaultDealScoreWeightsByPurchaseOption(defaultDealScoreWeights),
+    cayenneDealPushThreshold: 75,
+    cayenneDealScoreWeights: defaultCayenneDealScoreWeights,
   };
 }
 
@@ -256,6 +339,11 @@ function mapSettings(settings: {
   dealPushThreshold?: number | null;
   dealPushThresholds?: Partial<DealPushThresholds> | null;
   dealScoreWeights?: Partial<DealScoreWeights> | null;
+  dealScoreWeightsByPurchaseOption?: Partial<
+    Record<PurchaseOption, Partial<DealScoreWeights> | null>
+  > | null;
+  cayenneDealPushThreshold?: number | null;
+  cayenneDealScoreWeights?: Partial<CayenneDealScoreWeights> | null;
   updatedAt?: Date;
 }): AppSettingsView {
   const legacyThreshold = clampInteger(settings.dealPushThreshold, 60, 1, 100);
@@ -263,11 +351,26 @@ function mapSettings(settings: {
     settings.dealPushThresholds || {},
     legacyThreshold,
   );
+  const dealScoreWeights = normalizeWeights(settings.dealScoreWeights || {});
+  const dealScoreWeightsByPurchaseOption = normalizeWeightsByPurchaseOption(
+    getDefaultDealScoreWeightsByPurchaseOption(dealScoreWeights),
+    settings.dealScoreWeightsByPurchaseOption,
+  );
 
   return {
     dealPushThreshold: dealPushThresholds.release,
     dealPushThresholds,
-    dealScoreWeights: normalizeWeights(settings.dealScoreWeights || {}),
+    dealScoreWeights,
+    dealScoreWeightsByPurchaseOption,
+    cayenneDealPushThreshold: clampInteger(
+      settings.cayenneDealPushThreshold,
+      75,
+      1,
+      100,
+    ),
+    cayenneDealScoreWeights: normalizeCayenneDealScoreWeights(
+      settings.cayenneDealScoreWeights || {},
+    ),
     updatedAt: settings.updatedAt?.toISOString(),
   };
 }
@@ -305,6 +408,70 @@ function parseWeightInput(
     price: parseFiniteNumber(weights.price),
     power: parseFiniteNumber(weights.power),
     year: parseFiniteNumber(weights.year),
+  };
+}
+
+function parseCayenneWeightInput(
+  weights: UpdateAppSettingsInput["cayenneDealScoreWeights"],
+): Partial<CayenneDealScoreWeights> {
+  if (!weights || typeof weights !== "object") {
+    return {};
+  }
+
+  return {
+    vatFinancing: parseFiniteNumber(weights.vatFinancing),
+    price: parseFiniteNumber(weights.price),
+    accidentFree: parseFiniteNumber(weights.accidentFree),
+    mileage: parseFiniteNumber(weights.mileage),
+  };
+}
+
+function normalizeWeightsByPurchaseOption(
+  currentWeights: DealScoreWeightsByPurchaseOption,
+  inputWeights?:
+    | UpdateAppSettingsInput["dealScoreWeightsByPurchaseOption"]
+    | Partial<Record<PurchaseOption, Partial<DealScoreWeights> | null>>
+    | null,
+  legacyInputWeights?: UpdateAppSettingsInput["dealScoreWeights"],
+): DealScoreWeightsByPurchaseOption {
+  const legacyWeights = parseWeightInput(legacyInputWeights);
+
+  return {
+    release: normalizeWeights(
+      mergeWeightInput(
+        currentWeights.release,
+        inputWeights?.release || legacyWeights,
+      ),
+    ),
+    sale: normalizeWeights(
+      mergeWeightInput(currentWeights.sale, inputWeights?.sale || legacyWeights),
+    ),
+    newRelease: normalizeWeights(
+      mergeWeightInput(
+        currentWeights.newRelease,
+        inputWeights?.newRelease || legacyWeights,
+      ),
+    ),
+  };
+}
+
+function mergeWeightInput(
+  currentWeights: DealScoreWeights,
+  inputWeights: UpdateAppSettingsInput["dealScoreWeights"],
+): Partial<DealScoreWeights> {
+  return {
+    ...currentWeights,
+    ...parseWeightInput(inputWeights),
+  };
+}
+
+function getDefaultDealScoreWeightsByPurchaseOption(
+  weights: DealScoreWeights,
+): DealScoreWeightsByPurchaseOption {
+  return {
+    release: weights,
+    sale: weights,
+    newRelease: weights,
   };
 }
 
