@@ -42,6 +42,8 @@ export default function CayenneClient({
   );
   const [message, setMessage] = useState(initialMessage || "");
   const [actionState, setActionState] = useState<"idle" | "running">("idle");
+  const [canScroll, setCanScroll] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
   const [previewImage, setPreviewImage] = useState<{
     alt: string;
     images: string[];
@@ -280,6 +282,27 @@ export default function CayenneClient({
   function handlePreviewPointerCancel() {
     previewSwipeStartRef.current = null;
   }
+
+  useEffect(() => {
+    function updateScrollTopVisibility() {
+      const hasScrollableContent =
+        document.documentElement.scrollHeight > window.innerHeight + 8;
+
+      setCanScroll(hasScrollableContent);
+      setShowScrollTop(hasScrollableContent && window.scrollY > 240);
+    }
+
+    updateScrollTopVisibility();
+    window.addEventListener("resize", updateScrollTopVisibility);
+    window.addEventListener("scroll", updateScrollTopVisibility, {
+      passive: true,
+    });
+
+    return () => {
+      window.removeEventListener("resize", updateScrollTopVisibility);
+      window.removeEventListener("scroll", updateScrollTopVisibility);
+    };
+  }, [data.offers.length, previewImage]);
 
   const isBusy = actionState === "running";
 
@@ -656,6 +679,16 @@ export default function CayenneClient({
             </div>
           </div>
         </div>
+      )}
+      {canScroll && showScrollTop && (
+        <button
+          aria-label="Przewiń na górę"
+          className="fixed bottom-6 right-6 z-40 h-12 rounded-full border border-cyan-300/60 bg-cyan-400 px-5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-950/40 transition hover:bg-cyan-300"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          type="button"
+        >
+          Do góry
+        </button>
       )}
     </main>
   );
