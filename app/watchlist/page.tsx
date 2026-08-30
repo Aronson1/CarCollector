@@ -186,6 +186,9 @@ export default function WatchlistPage() {
             <Link className={navLinkClassName} href="/">
               Panel ofert
             </Link>
+            <Link className={navLinkClassName} href="/cayenne">
+              Cayenne
+            </Link>
             <Link className={navLinkClassName} href="/dashboard">
               Dashboard trendów
             </Link>

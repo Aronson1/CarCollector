@@ -209,7 +209,10 @@ export async function getCars(filters: GetCarsFilters): Promise<CarSearchResult>
   );
 
   const settings = await getAppSettings();
-  const scoredViews = applyDealScores(views, settings.dealScoreWeights);
+  const scoredViews = applyDealScores(
+    views,
+    settings.dealScoreWeightsByPurchaseOption[purchaseOption],
+  );
   const filteredViews = scoredViews.filter((view) => {
     if (filters.changedOnly && !view.hasPriceChanged) return false;
     if (filters.availableOnly && !view.isAvailable) return false;

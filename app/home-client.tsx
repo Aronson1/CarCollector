@@ -492,6 +492,12 @@ export default function HomeClient({
             <div className="flex flex-col gap-2 sm:flex-row sm:self-end">
               <Link
                 className="min-h-12 rounded border border-slate-700 px-4 py-3 text-center text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100"
+                href="/cayenne"
+              >
+                Cayenne
+              </Link>
+              <Link
+                className="min-h-12 rounded border border-slate-700 px-4 py-3 text-center text-sm font-semibold leading-tight text-slate-100 transition hover:border-cyan-400 hover:text-cyan-100"
                 href="/watchlist"
               >
                 Watchlista

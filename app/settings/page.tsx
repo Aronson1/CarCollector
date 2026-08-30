@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 import type {
   DealPushThresholds,
   DealScoreWeights,
+  DealScoreWeightsByPurchaseOption,
   PurchaseOption,
 } from "@/lib/types";
+import type { CayenneDealScoreWeights } from "@/lib/cayenne";
 
 type LoadState = "idle" | "loading" | "error";
 
@@ -20,6 +22,9 @@ interface SettingsStatus {
     dealPushThreshold: number;
     dealPushThresholds: DealPushThresholds;
     dealScoreWeights: DealScoreWeights;
+    dealScoreWeightsByPurchaseOption?: DealScoreWeightsByPurchaseOption;
+    cayenneDealPushThreshold: number;
+    cayenneDealScoreWeights: CayenneDealScoreWeights;
     updatedAt?: string;
   };
   collectors: Array<{
@@ -43,6 +48,7 @@ interface SettingsStatus {
       id: string;
       externalId: string;
       fullName: string;
+      source: "arval" | "cayenne";
       score?: number;
       notifiedAt: string;
       offerUrl?: string;
@@ -62,6 +68,27 @@ const defaultThresholds: DealPushThresholds = {
   newRelease: 60,
 };
 
+type ThresholdInputs = Record<PurchaseOption, string>;
+
+const defaultThresholdInputs: ThresholdInputs = {
+  release: "60",
+  sale: "60",
+  newRelease: "60",
+};
+
+const defaultWeightsByPurchaseOption: DealScoreWeightsByPurchaseOption = {
+  release: defaultWeights,
+  sale: defaultWeights,
+  newRelease: defaultWeights,
+};
+
+const defaultCayenneWeights: CayenneDealScoreWeights = {
+  vatFinancing: 0.3,
+  price: 0.3,
+  accidentFree: 0.2,
+  mileage: 0.2,
+};
+
 const purchaseOptions: PurchaseOption[] = ["release", "sale", "newRelease"];
 
 export default function SettingsPage() {
@@ -70,8 +97,12 @@ export default function SettingsPage() {
   const [message, setMessage] = useState("");
   const [actionKey, setActionKey] = useState<string | null>(null);
   const [thresholds, setThresholds] =
-    useState<DealPushThresholds>(defaultThresholds);
-  const [weights, setWeights] = useState<DealScoreWeights>(defaultWeights);
+    useState<ThresholdInputs>(defaultThresholdInputs);
+  const [weightsByPurchaseOption, setWeightsByPurchaseOption] =
+    useState<DealScoreWeightsByPurchaseOption>(defaultWeightsByPurchaseOption);
+  const [cayenneThreshold, setCayenneThreshold] = useState("75");
+  const [cayenneWeights, setCayenneWeights] =
+    useState<CayenneDealScoreWeights>(defaultCayenneWeights);
 
   async function loadSettings(clearMessage = false) {
     setLoadState("loading");
@@ -84,8 +115,10 @@ export default function SettingsPage() {
         cache: "no-store",
       });
       setStatus(payload);
-      setThresholds(getThresholds(payload.settings));
-      setWeights(payload.settings.dealScoreWeights);
+      setThresholds(getThresholdInputs(payload.settings));
+      setWeightsByPurchaseOption(getWeightsByPurchaseOption(payload.settings));
+      setCayenneThreshold(String(payload.settings.cayenneDealPushThreshold));
+      setCayenneWeights(payload.settings.cayenneDealScoreWeights);
       setLoadState("idle");
     } catch (error) {
       console.error(error);
@@ -188,12 +221,17 @@ export default function SettingsPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dealPushThresholds: thresholds,
-          dealScoreWeights: weights,
+          dealPushThresholds: parseThresholdInputs(thresholds),
+          dealScoreWeightsByPurchaseOption: weightsByPurchaseOption,
+          cayenneDealPushThreshold:
+            parseThresholdInput(cayenneThreshold) || 75,
+          cayenneDealScoreWeights: cayenneWeights,
         }),
       });
-      setThresholds(getThresholds(payload.settings));
-      setWeights(payload.settings.dealScoreWeights);
+      setThresholds(getThresholdInputs(payload.settings));
+      setWeightsByPurchaseOption(getWeightsByPurchaseOption(payload.settings));
+      setCayenneThreshold(String(payload.settings.cayenneDealPushThreshold));
+      setCayenneWeights(payload.settings.cayenneDealScoreWeights);
       setMessage("Zapisano konfigurację okazji.");
       await loadSettings();
     } catch (error) {
@@ -234,6 +272,7 @@ export default function SettingsPage() {
             <NavLink href="/">Panel ofert</NavLink>
             <NavLink href="/watchlist">Watchlista</NavLink>
             <NavLink href="/dashboard">Dashboard</NavLink>
+            <NavLink href="/cayenne">Cayenne</NavLink>
             <NavLink href="/help">Pomoc</NavLink>
           </div>
         </header>
@@ -271,7 +310,9 @@ export default function SettingsPage() {
           />
           <StatusCard
             label="Progi okazji"
-            value={formatThresholdRange(thresholds)}
+            value={`${formatThresholdRange(
+              parseThresholdInputs(thresholds),
+            )} / Cayenne ${parseThresholdInput(cayenneThreshold) || 75}/100`}
             detail="Minimalne noty do powiadomień push."
           />
           <StatusCard
@@ -333,36 +374,118 @@ export default function SettingsPage() {
               Konfiguracja okazji
             </h2>
             <div className="mt-4 grid gap-4">
-              <div className="grid gap-3">
-                {purchaseOptions.map((purchaseOption) => (
+              <div className="grid gap-5">
+                <div className="grid gap-3 border-b border-slate-800 pb-5">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-cyan-200">
+                    Porsche Cayenne
+                  </h3>
                   <ThresholdInput
-                    key={purchaseOption}
-                    label={getPurchaseOptionLabel(purchaseOption)}
+                    label="Próg push Cayenne"
+                    onChange={setCayenneThreshold}
+                    value={cayenneThreshold}
+                  />
+                  <WeightInput
+                    label="Faktura VAT / finansowanie"
                     onChange={(value) =>
-                      setThresholds((current) => ({
+                      setCayenneWeights((current) => ({
                         ...current,
-                        [purchaseOption]: value,
+                        vatFinancing: value,
                       }))
                     }
-                    value={thresholds[purchaseOption]}
+                    value={cayenneWeights.vatFinancing}
                   />
-                ))}
+                  <WeightInput
+                    label="Cena"
+                    onChange={(value) =>
+                      setCayenneWeights((current) => ({
+                        ...current,
+                        price: value,
+                      }))
+                    }
+                    value={cayenneWeights.price}
+                  />
+                  <WeightInput
+                    label="Bezwypadkowy"
+                    onChange={(value) =>
+                      setCayenneWeights((current) => ({
+                        ...current,
+                        accidentFree: value,
+                      }))
+                    }
+                    value={cayenneWeights.accidentFree}
+                  />
+                  <WeightInput
+                    label="Przebieg"
+                    onChange={(value) =>
+                      setCayenneWeights((current) => ({
+                        ...current,
+                        mileage: value,
+                      }))
+                    }
+                    value={cayenneWeights.mileage}
+                  />
+                </div>
+                {purchaseOptions.map((purchaseOption) => {
+                  const weights = weightsByPurchaseOption[purchaseOption];
+
+                  return (
+                    <div
+                      className="grid gap-3 border-t border-slate-800 pt-4 first:border-t-0 first:pt-0"
+                      key={purchaseOption}
+                    >
+                      <ThresholdInput
+                        label={getPurchaseOptionLabel(purchaseOption)}
+                        onChange={(value) =>
+                          setThresholds((current) => ({
+                            ...current,
+                            [purchaseOption]: value,
+                          }))
+                        }
+                        value={thresholds[purchaseOption]}
+                      />
+                      <WeightInput
+                        label="Cena"
+                        onChange={(value) =>
+                          setWeightsByPurchaseOption((current) => ({
+                            ...current,
+                            [purchaseOption]: {
+                              ...current[purchaseOption],
+                              price: value,
+                            },
+                          }))
+                        }
+                        value={weights.price}
+                      />
+                      <WeightInput
+                        label="Moc"
+                        onChange={(value) =>
+                          setWeightsByPurchaseOption((current) => ({
+                            ...current,
+                            [purchaseOption]: {
+                              ...current[purchaseOption],
+                              power: value,
+                            },
+                          }))
+                        }
+                        value={weights.power}
+                      />
+                      <WeightInput
+                        label="Rocznik"
+                        onChange={(value) =>
+                          setWeightsByPurchaseOption((current) => ({
+                            ...current,
+                            [purchaseOption]: {
+                              ...current[purchaseOption],
+                              year: value,
+                            },
+                          }))
+                        }
+                        value={weights.year}
+                      />
+                    </div>
+                  );
+                })}
               </div>
-              <WeightInput
-                label="Cena"
-                onChange={(value) => setWeights((current) => ({ ...current, price: value }))}
-                value={weights.price}
-              />
-              <WeightInput
-                label="Moc"
-                onChange={(value) => setWeights((current) => ({ ...current, power: value }))}
-                value={weights.power}
-              />
-              <WeightInput
-                label="Rocznik"
-                onChange={(value) => setWeights((current) => ({ ...current, year: value }))}
-                value={weights.year}
-              />
               <button
                 className="min-h-11 rounded bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isBusy}
@@ -401,7 +524,8 @@ export default function SettingsPage() {
                         {item.fullName}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        ID {item.externalId} / {formatDateTime(item.notifiedAt)}
+                        {item.source === "cayenne" ? "Cayenne" : "Arval"} / ID{" "}
+                        {item.externalId} / {formatDateTime(item.notifiedAt)}
                       </p>
                     </div>
                     <div className="text-sm sm:text-right">
@@ -539,20 +663,22 @@ function ThresholdInput({
   value,
 }: {
   label: string;
-  onChange: (value: number) => void;
-  value: number;
+  onChange: (value: string) => void;
+  value: string;
 }) {
+  const parsedValue = parseThresholdInput(value);
+
   return (
     <label className="grid gap-2 text-sm">
       <span className="font-semibold text-slate-200">
-        {label}: {value}/100
+        {label}: {parsedValue ? `${parsedValue}/100` : "-/100"}
       </span>
       <input
         className="h-11 rounded border border-slate-700 bg-slate-950 px-3 text-sm text-white outline-none focus:border-cyan-400"
-        max={100}
-        min={1}
-        onChange={(event) => onChange(Number(event.target.value))}
-        type="number"
+        inputMode="numeric"
+        onChange={(event) => onChange(normalizeThresholdInput(event.target.value))}
+        pattern="[0-9]*"
+        type="text"
         value={value}
       />
     </label>
@@ -605,11 +731,26 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("pl-PL").format(value);
 }
 
-function getThresholds(settings: SettingsStatus["settings"]): DealPushThresholds {
-  return settings.dealPushThresholds || {
+function getThresholdInputs(settings: SettingsStatus["settings"]): ThresholdInputs {
+  const thresholds = settings.dealPushThresholds || {
     release: settings.dealPushThreshold,
     sale: settings.dealPushThreshold,
     newRelease: settings.dealPushThreshold,
+  };
+
+  return {
+    release: String(thresholds.release),
+    sale: String(thresholds.sale),
+    newRelease: String(thresholds.newRelease),
+  };
+}
+
+function parseThresholdInputs(thresholds: ThresholdInputs): DealPushThresholds {
+  return {
+    release: parseThresholdInput(thresholds.release) || defaultThresholds.release,
+    sale: parseThresholdInput(thresholds.sale) || defaultThresholds.sale,
+    newRelease:
+      parseThresholdInput(thresholds.newRelease) || defaultThresholds.newRelease,
   };
 }
 
@@ -619,6 +760,34 @@ function formatThresholdRange(thresholds: DealPushThresholds) {
   const max = Math.max(...values);
 
   return min === max ? `${min}/100` : `${min}-${max}/100`;
+}
+
+function normalizeThresholdInput(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return "";
+
+  const withoutLeadingZeroes = digits.replace(/^0+(?=\d)/, "");
+  const parsed = Number(withoutLeadingZeroes);
+  if (!Number.isFinite(parsed)) return "";
+
+  return String(Math.min(parsed, 100));
+}
+
+function parseThresholdInput(value: string) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+
+  return Math.min(Math.round(parsed), 100);
+}
+
+function getWeightsByPurchaseOption(
+  settings: SettingsStatus["settings"],
+): DealScoreWeightsByPurchaseOption {
+  return settings.dealScoreWeightsByPurchaseOption || {
+    release: settings.dealScoreWeights,
+    sale: settings.dealScoreWeights,
+    newRelease: settings.dealScoreWeights,
+  };
 }
 
 function formatWeight(value: number) {

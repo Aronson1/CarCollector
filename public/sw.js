@@ -1,4 +1,4 @@
-const CACHE_NAME = "car-collector-shell-v3";
+const CACHE_NAME = "car-collector-shell-v4";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -34,6 +34,11 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.pathname.startsWith("/api/")) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
+  if (url.pathname.startsWith("/_next/")) {
     event.respondWith(fetch(request));
     return;
   }

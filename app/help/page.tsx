@@ -198,6 +198,7 @@ export default function HelpPage() {
             <NavLink href="/">Panel ofert</NavLink>
             <NavLink href="/watchlist">Watchlista</NavLink>
             <NavLink href="/dashboard">Dashboard</NavLink>
+            <NavLink href="/cayenne">Cayenne</NavLink>
             <NavLink href="/settings">Ustawienia</NavLink>
           </div>
         </header>
